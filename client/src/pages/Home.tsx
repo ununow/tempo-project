@@ -52,7 +52,7 @@ export default function Home() {
           </div>
 
           <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-4 leading-tight">
-            피트니스 센터<br />
+            비즈니스PT 레드센터<br />
             <span className="text-primary">통합 운영 플랫폼</span>
           </h1>
           <p className="text-lg text-muted-foreground mb-10 leading-relaxed">
@@ -87,7 +87,7 @@ export default function Home() {
       </div>
 
       <footer className="text-center text-xs text-muted-foreground pb-6">
-        © 2026 Tempo — 피트니스 센터 통합 운영 플랫폼
+        © 2026 Tempo — 비즈니스PT 레드센터 통합 운영 플랫폼
       </footer>
     </div>
   );

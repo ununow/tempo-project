@@ -85,7 +85,7 @@ export default function TempoLayout({ children }: { children: React.ReactNode })
         {!collapsed && (
           <div>
             <div className="text-sidebar-foreground font-bold text-base leading-tight">Tempo</div>
-            <div className="text-sidebar-foreground/40 text-xs">비즈니스PT 운영 플랫폼</div>
+            <div className="text-sidebar-foreground/40 text-xs">레드센터 통합 운영</div>
           </div>
         )}
       </div>

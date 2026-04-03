@@ -73,3 +73,6 @@
 - [x] 이월(Carry-over) 로직: 미완료 TO-DO 자동 다음날 이동
 - [x] 팀 스케줄 가시성: 팀원 주간 스케줄 통합 뷰 (private 블럭 제목 숨김)
 - [x] vitest 테스트 확장 (12 tests passed)
+
+## 3차 수정
+- [x] 앱 이름/설명 전체를 "비즈니스PT 레드센터 통합 운영 플랫폼"으로 수정 완료 (index.html, TempoLayout, Home.tsx 푸터 모두 적용)
