@@ -34,6 +34,30 @@ vi.mock("./db", () => ({
   setAdminCache: vi.fn().mockResolvedValue(undefined),
   getAdminSession: vi.fn().mockResolvedValue(null),
   saveAdminSession: vi.fn().mockResolvedValue(undefined),
+  // 새로 추가된 함수
+  getTodosForAutoSchedule: vi.fn().mockResolvedValue([]),
+  getTeamMemberIds: vi.fn().mockResolvedValue([1, 2]),
+  getUserBasicInfo: vi.fn().mockResolvedValue([{ id: 1, name: "Alice", tempoRole: "trainer" }]),
+  getScheduleBlocksByUserIds: vi.fn().mockResolvedValue([]),
+  getAllTeams: vi.fn().mockResolvedValue([]),
+  getTeamsByManager: vi.fn().mockResolvedValue([]),
+  getTeamsByMember: vi.fn().mockResolvedValue([]),
+  createTeam: vi.fn().mockResolvedValue({ id: 1 }),
+  updateTeam: vi.fn().mockResolvedValue({ id: 1 }),
+  deleteTeam: vi.fn().mockResolvedValue({ success: true }),
+  addTeamMember: vi.fn().mockResolvedValue({ success: true }),
+  removeTeamMember: vi.fn().mockResolvedValue({ success: true }),
+  getAllTrainerMembers: vi.fn().mockResolvedValue([]),
+  getTrainerMembers: vi.fn().mockResolvedValue([]),
+  getTrainerMembersByTeams: vi.fn().mockResolvedValue([]),
+  addTrainerMember: vi.fn().mockResolvedValue({ id: 1 }),
+  updateTrainerMember: vi.fn().mockResolvedValue({ id: 1 }),
+  removeTrainerMember: vi.fn().mockResolvedValue({ success: true }),
+  invalidateAdminSession: vi.fn().mockResolvedValue(undefined),
+  applyScheduleTemplate: vi.fn().mockResolvedValue({ created: 0 }),
+  getScheduleTemplateBlocks: vi.fn().mockResolvedValue([]),
+  createScheduleTemplateBlock: vi.fn().mockResolvedValue({ id: 1 }),
+  deleteScheduleTemplateBlock: vi.fn().mockResolvedValue({ success: true }),
 }));
 
 vi.mock("./adminProxy", () => ({
@@ -93,6 +117,31 @@ describe("Admin proxy mock checks", () => {
   it("fetchTrainers returns array", async () => {
     const { fetchTrainers } = await import("./adminProxy");
     const result = await fetchTrainers();
+    expect(Array.isArray(result)).toBe(true);
+  });
+});
+
+describe("New feature mock checks", () => {
+  it("getTodosForAutoSchedule returns empty array by default", async () => {
+    const result = await db.getTodosForAutoSchedule(1);
+    expect(Array.isArray(result)).toBe(true);
+  });
+
+  it("getTeamMemberIds returns array of user ids", async () => {
+    const result = await db.getTeamMemberIds(1);
+    expect(Array.isArray(result)).toBe(true);
+    expect(result).toContain(1);
+  });
+
+  it("getUserBasicInfo returns member info array", async () => {
+    const result = await db.getUserBasicInfo([1]);
+    expect(Array.isArray(result)).toBe(true);
+    expect(result[0]).toHaveProperty("name");
+    expect(result[0]).toHaveProperty("tempoRole");
+  });
+
+  it("getScheduleBlocksByUserIds returns empty array", async () => {
+    const result = await db.getScheduleBlocksByUserIds([1, 2], "2026-04-01", "2026-04-07");
     expect(Array.isArray(result)).toBe(true);
   });
 });

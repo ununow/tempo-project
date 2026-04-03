@@ -13,6 +13,8 @@ import MemberMonitorPage from "./pages/MemberMonitorPage";
 import AdminSettingsPage from "./pages/AdminSettingsPage";
 import ApprovalsPage from "./pages/ApprovalsPage";
 import InterviewPage from "./pages/InterviewPage";
+import TeamSettingsPage from "./pages/TeamSettingsPage";
+import TeamSchedulePage from "./pages/TeamSchedulePage";
 import TempoLayout from "./components/TempoLayout";
 import { useAuth } from "./_core/hooks/useAuth";
 import { getLoginUrl } from "./const";
@@ -87,6 +89,20 @@ function Router() {
         {() => (
           <ProtectedLayout>
             <InterviewPage />
+          </ProtectedLayout>
+        )}
+      </Route>
+      <Route path="/team-schedule">
+        {() => (
+          <ProtectedLayout>
+            <TeamSchedulePage />
+          </ProtectedLayout>
+        )}
+      </Route>
+      <Route path="/team-settings">
+        {() => (
+          <ProtectedLayout>
+            <TeamSettingsPage />
           </ProtectedLayout>
         )}
       </Route>

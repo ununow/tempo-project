@@ -53,6 +53,44 @@ export const organizations = mysqlTable("organizations", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+// ─── Teams (Tempo 자체 팀 설정 - 부책임센터장이 구성) ─────────────────────────
+export const teams = mysqlTable("teams", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  managerId: int("managerId").notNull(),   // 부책임센터장 user ID
+  organizationId: int("organizationId"),   // 소속 센터 ID
+  color: varchar("color", { length: 20 }),
+  description: text("description"),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+// ─── Team Members (팀 소속 트레이너) ─────────────────────────────────────────
+export const teamMembers = mysqlTable("team_members", {
+  id: int("id").autoincrement().primaryKey(),
+  teamId: int("teamId").notNull(),
+  userId: int("userId").notNull(),   // 트레이너 user ID
+  joinedAt: timestamp("joinedAt").defaultNow().notNull(),
+});
+
+// ─── Trainer Members (트레이너-회원 UID 매핑) ─────────────────────────────────
+// 트레이너가 담당하는 회원의 어드민 UID를 Tempo에 등록
+export const trainerMembers = mysqlTable("trainer_members", {
+  id: int("id").autoincrement().primaryKey(),
+  trainerId: int("trainerId").notNull(),       // Tempo user ID (트레이너)
+  memberUid: varchar("memberUid", { length: 64 }).notNull(), // 어드민 회원 UID
+  memberName: varchar("memberName", { length: 100 }), // 캐시된 이름
+  memberPhone: varchar("memberPhone", { length: 20 }), // 캐시된 전화번호
+  ptType: varchar("ptType", { length: 50 }),   // PT 유형 (캐시)
+  remainingSessions: int("remainingSessions"), // 잔여 횟수 (캐시)
+  lastSyncAt: timestamp("lastSyncAt"),         // 마지막 어드민 동기화 시각
+  memo: text("memo"),                          // 트레이너 메모
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 // ─── TODOs ────────────────────────────────────────────────────────────────────
 export const todos = mysqlTable("todos", {
   id: int("id").autoincrement().primaryKey(),
@@ -83,6 +121,9 @@ export const todos = mysqlTable("todos", {
   // 상위 TODO (월간 → 주간 연결)
   parentTodoId: int("parentTodoId"),
   completionRate: float("completionRate").default(0),
+  // 이월 관련
+  isCarriedOver: boolean("isCarriedOver").default(false).notNull(),
+  originalDate: date("originalDate"), // 원래 예정일 (이월된 경우)
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -248,8 +289,9 @@ export const adminCache = mysqlTable("admin_cache", {
 // ─── Admin Sessions (어드민 로그인 세션) ──────────────────────────────────────
 export const adminSessions = mysqlTable("admin_sessions", {
   id: int("id").autoincrement().primaryKey(),
-  sessionToken: text("sessionToken"),
+  sessionToken: text("sessionToken"),   // next-auth.session-token 쿠키값
   csrfToken: text("csrfToken"),
+  cookieJar: text("cookieJar"),         // 전체 쿠키 문자열 (JSON serialized)
   isValid: boolean("isValid").default(false).notNull(),
   lastLoginAt: timestamp("lastLoginAt"),
   expiresAt: timestamp("expiresAt"),
@@ -261,6 +303,9 @@ export const adminSessions = mysqlTable("admin_sessions", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Organization = typeof organizations.$inferSelect;
+export type Team = typeof teams.$inferSelect;
+export type TeamMember = typeof teamMembers.$inferSelect;
+export type TrainerMember = typeof trainerMembers.$inferSelect;
 export type Todo = typeof todos.$inferSelect;
 export type TodoWeekSplit = typeof todoWeekSplits.$inferSelect;
 export type ScheduleBlock = typeof scheduleBlocks.$inferSelect;

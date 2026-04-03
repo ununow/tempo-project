@@ -29,6 +29,7 @@ import {
   Zap,
   Menu,
   X,
+  CalendarDays,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +41,8 @@ const NAV_ITEMS = [
   { href: "/members", icon: Users, label: "회원 모니터링", roles: ["owner", "center_manager", "sub_manager", "trainer"] },
   { href: "/approvals", icon: ClipboardCheck, label: "승인 요청", roles: ["owner", "center_manager", "sub_manager"] },
   { href: "/interviews", icon: MessageSquare, label: "면담 기록", roles: ["owner", "center_manager", "sub_manager", "trainer"] },
+  { href: "/team-schedule", icon: CalendarDays, label: "팀 스케줄", roles: ["owner", "center_manager", "sub_manager", "trainer"] },
+  { href: "/team-settings", icon: Users, label: "팀 설정", roles: ["owner", "center_manager", "sub_manager"] },
   { href: "/admin-settings", icon: Settings, label: "어드민 연동", roles: ["owner", "center_manager"] },
 ];
 
@@ -82,7 +85,7 @@ export default function TempoLayout({ children }: { children: React.ReactNode })
         {!collapsed && (
           <div>
             <div className="text-sidebar-foreground font-bold text-base leading-tight">Tempo</div>
-            <div className="text-sidebar-foreground/40 text-xs">피트니스 운영 플랫폼</div>
+            <div className="text-sidebar-foreground/40 text-xs">비즈니스PT 운영 플랫폼</div>
           </div>
         )}
       </div>

@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE `trainer_members` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`trainerId` int NOT NULL,\n\t`memberUid` varchar(64) NOT NULL,\n\t`memberName` varchar(100),\n\t`memberPhone` varchar(20),\n\t`ptType` varchar(50),\n\t`remainingSessions` int,\n\t`lastSyncAt` timestamp,\n\t`memo` text,\n\t`isActive` boolean NOT NULL DEFAULT true,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `trainer_members_id` PRIMARY KEY(`id`)\n)",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user FXo4Kkn1ayRBmLq.root --database YTJxgSgVg3rZj7Pxj4eWWk --execute CREATE TABLE `trainer_members` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`trainerId` int NOT NULL,\n\t`memberUid` varchar(64) NOT NULL,\n\t`memberName` varchar(100),\n\t`memberPhone` varchar(20),\n\t`ptType` varchar(50),\n\t`remainingSessions` int,\n\t`lastSyncAt` timestamp,\n\t`memo` text,\n\t`isActive` boolean NOT NULL DEFAULT true,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `trainer_members_id` PRIMARY KEY(`id`)\n)",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 121
+}

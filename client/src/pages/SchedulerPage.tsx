@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { Switch } from "@/components/ui/switch";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -10,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import {
   ChevronLeft, ChevronRight, Plus, Trash2,
-  Calendar, Layers, CheckSquare, Zap, Lock, Settings, Users, X
+  Calendar, Layers, CheckSquare, Zap, Lock, Settings, Users, X, Wand2, Clock
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -206,6 +207,14 @@ export default function SchedulerPage() {
   const [dragOver, setDragOver] = useState<{ date: string; hour: number } | null>(null);
   const [draggingTodo, setDraggingTodo] = useState<any>(null);
   const [showTemplatePanel, setShowTemplatePanel] = useState(false);
+  const [showAutoScheduleDialog, setShowAutoScheduleDialog] = useState(false);
+  const [autoScheduleConfig, setAutoScheduleConfig] = useState({
+    workStartHour: 9,
+    workEndHour: 21,
+    breakMinutes: 60,
+    breakStartHour: 12,
+    excludeWeekends: false,
+  });
 
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
   const startDate = toDateStr(weekDates[0]);
@@ -228,6 +237,15 @@ export default function SchedulerPage() {
   });
   const applyTemplateMutation = trpc.schedule.applyTemplate.useMutation({
     onSuccess: (d) => { refetch(); toast.success(`템플릿 ${d.created}개 적용됨`); },
+    onError: (e) => toast.error(e.message),
+  });
+  const autoScheduleMutation = trpc.schedule.autoSchedule.useMutation({
+    onSuccess: (d) => {
+      refetch();
+      if (d.placed === 0) toast.info("배치할 TO-DO가 없거나 빈 시간이 없습니다.");
+      else toast.success(`${d.placed}개 블럭이 자동으로 배치되었습니다.`);
+      setShowAutoScheduleDialog(false);
+    },
     onError: (e) => toast.error(e.message),
   });
 
@@ -332,6 +350,12 @@ export default function SchedulerPage() {
             <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => applyTemplateMutation.mutate({ weekStartDate: startDate })} disabled={applyTemplateMutation.isPending}>
               <Layers className="h-3 w-3 mr-1" />이번 주 적용
             </Button>
+            <Button
+              variant="outline" size="sm" className="h-8 text-xs text-purple-400 border-purple-500/40 hover:bg-purple-500/10"
+              onClick={() => setShowAutoScheduleDialog(true)}
+            >
+              <Wand2 className="h-3 w-3 mr-1" />자동 배치
+            </Button>
             <Button size="sm" className="h-8 text-xs" onClick={() => openCreate(today)}>
               <Plus className="h-3 w-3 mr-1" />블럭 추가
             </Button>
@@ -407,6 +431,102 @@ export default function SchedulerPage() {
 
       {/* Right: Template Panel */}
       {showTemplatePanel && <TemplatePanel onClose={() => setShowTemplatePanel(false)} />}
+
+      {/* Auto Schedule Dialog */}
+      <Dialog open={showAutoScheduleDialog} onOpenChange={setShowAutoScheduleDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wand2 className="w-4 h-4 text-purple-400" />
+              자동 스케줄 배치
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-xs text-muted-foreground">
+              미완료 TO-DO를 우선순위 순으로 이번 주 빈 시간에 자동 배치합니다.
+              기존 블럭과 겹치지 않게 배치됩니다.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">업무 시작 시간</Label>
+                <div className="flex items-center gap-1 mt-1">
+                  <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                  <Input
+                    type="number" min={0} max={23}
+                    value={autoScheduleConfig.workStartHour}
+                    onChange={e => setAutoScheduleConfig(c => ({ ...c, workStartHour: Number(e.target.value) }))}
+                    className="h-8 text-xs"
+                  />
+                  <span className="text-xs text-muted-foreground">시</span>
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">업무 종료 시간</Label>
+                <div className="flex items-center gap-1 mt-1">
+                  <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                  <Input
+                    type="number" min={0} max={23}
+                    value={autoScheduleConfig.workEndHour}
+                    onChange={e => setAutoScheduleConfig(c => ({ ...c, workEndHour: Number(e.target.value) }))}
+                    className="h-8 text-xs"
+                  />
+                  <span className="text-xs text-muted-foreground">시</span>
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">점심 시작 시간</Label>
+                <div className="flex items-center gap-1 mt-1">
+                  <Input
+                    type="number" min={0} max={23}
+                    value={autoScheduleConfig.breakStartHour}
+                    onChange={e => setAutoScheduleConfig(c => ({ ...c, breakStartHour: Number(e.target.value) }))}
+                    className="h-8 text-xs"
+                  />
+                  <span className="text-xs text-muted-foreground">시</span>
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">점심 시간 (분)</Label>
+                <div className="flex items-center gap-1 mt-1">
+                  <Input
+                    type="number" min={0} max={180}
+                    value={autoScheduleConfig.breakMinutes}
+                    onChange={e => setAutoScheduleConfig(c => ({ ...c, breakMinutes: Number(e.target.value) }))}
+                    className="h-8 text-xs"
+                  />
+                  <span className="text-xs text-muted-foreground">분</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">주말 제외</Label>
+              <Switch
+                checked={autoScheduleConfig.excludeWeekends}
+                onCheckedChange={v => setAutoScheduleConfig(c => ({ ...c, excludeWeekends: v }))}
+              />
+            </div>
+            <div className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
+              <p className="text-xs text-purple-300 font-medium">배치 규칙</p>
+              <ul className="text-xs text-muted-foreground mt-1 space-y-0.5 list-disc list-inside">
+                <li>우선순위: 긴급 → 높음 → 보통 → 낮음</li>
+                <li>블럭당 최대 2시간, 최소 15분 슬롯</li>
+                <li>기존 블럭 및 점심 시간 자동 회피</li>
+              </ul>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setShowAutoScheduleDialog(false)}>취소</Button>
+            <Button
+              size="sm"
+              className="bg-purple-600 hover:bg-purple-700"
+              onClick={() => autoScheduleMutation.mutate({ weekStartDate: startDate, ...autoScheduleConfig })}
+              disabled={autoScheduleMutation.isPending}
+            >
+              {autoScheduleMutation.isPending ? "배치 중..." : "자동 배치 실행"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Block Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
