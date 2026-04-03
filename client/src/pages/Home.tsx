@@ -1,9 +1,9 @@
+import { useEffect } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { getLoginUrl } from "@/const";
 import { Zap, BarChart3, Calendar, Users, CheckSquare, ArrowRight, Loader2 } from "lucide-react";
 import { useLocation } from "wouter";
-import { useEffect } from "react";
 
 const FEATURES = [
   { icon: BarChart3, title: "실시간 대시보드", desc: "KPI, 회원 현황, 수익화 지표를 한눈에" },
@@ -16,6 +16,13 @@ export default function Home() {
   const { isAuthenticated, loading } = useAuth();
   const [, navigate] = useLocation();
 
+  // All hooks must be called unconditionally before any early returns
+  useEffect(() => {
+    if (!loading && isAuthenticated) {
+      navigate("/dashboard");
+    }
+  }, [isAuthenticated, loading, navigate]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -23,12 +30,6 @@ export default function Home() {
       </div>
     );
   }
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      navigate("/dashboard");
-    }
-  }, [isAuthenticated, navigate]);
 
   if (isAuthenticated) return null;
 
