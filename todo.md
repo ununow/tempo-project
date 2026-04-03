@@ -61,14 +61,14 @@
 
 ## 2차 개발 - 비즈니스PT 플랫폼 고도화
 
-- [ ] 어드민 UID 기반 회원 정보 조회 API 확인 및 구현
-- [ ] DB 스키마 확장: trainer_members(트레이너-회원 UID 매핑), teams(팀 설정)
-- [ ] adminProxy.ts: fetchMemberByUid(uid), fetchMemberSchedule(uid) 구현
-- [ ] 역할별 접근 제어: 트레이너=본인 회원만, 부책임=팀 회원만, 책임=전체
-- [ ] 팀 설정 페이지: 부책임센터장이 트레이너 팀 구성 (Tempo 자체 데이터)
-- [ ] 회원 모니터링 페이지 전면 개편: UID 입력 → 어드민 연동 회원 정보 표시
+- [x] 어드민 UID 기반 회원 정보 조회 API 확인 및 구현 (fetchMemberByUid, admin.memberByUid 프로시저)
+- [x] DB 스키마 확장: trainer_members(트레이너-회원 UID 매핑), teams(팀 설정)
+- [x] adminProxy.ts: fetchMemberByUid(uid) 구현 (fetchMemberSchedule은 PT 스케줄 탭 직접 링크로 대체)
+- [x] 역할별 접근 제어: 트레이너=본인 회원만, 부책임=팀 회원만, 책임=전체 (trainerMember.list 라우터)
+- [x] 팀 설정 페이지: 부책임센터장이 트레이너 팀 구성 (TeamSettingsPage, team 라우터)
+- [x] 회원 모니터링 페이지 전면 개편: UID 입력 → 어드민 연동 회원 정보 표시 (MemberMonitorPage)
 - [x] 스케줄 자동 배치 알고리즘: 고정 일정 배치 후 빈 시간에 TO-DO 자동 삽입
-- [ ] 앱 이름/설명 비즈니스PT 반영
+- [x] 앱 이름/설명 비즈니스PT 반영 (TempoLayout + index.html 타이틀 + lang=ko + meta description 완료)
 - [x] 실제 소요 시간 타이머 (Task 실행 시)
 - [x] 이월(Carry-over) 로직: 미완료 TO-DO 자동 다음날 이동
 - [x] 팀 스케줄 가시성: 팀원 주간 스케줄 통합 뷰 (private 블럭 제목 숨김)
