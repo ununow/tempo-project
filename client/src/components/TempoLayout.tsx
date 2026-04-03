@@ -19,6 +19,7 @@ import {
   FileText,
   Users,
   ClipboardCheck,
+  MessageSquare,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -38,6 +39,7 @@ const NAV_ITEMS = [
   { href: "/report", icon: FileText, label: "업무 보고", roles: ["owner", "center_manager", "sub_manager", "trainer"] },
   { href: "/members", icon: Users, label: "회원 모니터링", roles: ["owner", "center_manager", "sub_manager", "trainer"] },
   { href: "/approvals", icon: ClipboardCheck, label: "승인 요청", roles: ["owner", "center_manager", "sub_manager"] },
+  { href: "/interviews", icon: MessageSquare, label: "면담 기록", roles: ["owner", "center_manager", "sub_manager", "trainer"] },
   { href: "/admin-settings", icon: Settings, label: "어드민 연동", roles: ["owner", "center_manager"] },
 ];
 

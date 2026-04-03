@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { getLoginUrl } from "@/const";
 import { Zap, BarChart3, Calendar, Users, CheckSquare, ArrowRight, Loader2 } from "lucide-react";
 import { useLocation } from "wouter";
+import { useEffect } from "react";
 
 const FEATURES = [
   { icon: BarChart3, title: "실시간 대시보드", desc: "KPI, 회원 현황, 수익화 지표를 한눈에" },
@@ -23,10 +24,13 @@ export default function Home() {
     );
   }
 
-  if (isAuthenticated) {
-    navigate("/dashboard");
-    return null;
-  }
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate("/dashboard");
+    }
+  }, [isAuthenticated, navigate]);
+
+  if (isAuthenticated) return null;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">

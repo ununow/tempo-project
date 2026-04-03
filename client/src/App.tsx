@@ -12,6 +12,7 @@ import ReportPage from "./pages/ReportPage";
 import MemberMonitorPage from "./pages/MemberMonitorPage";
 import AdminSettingsPage from "./pages/AdminSettingsPage";
 import ApprovalsPage from "./pages/ApprovalsPage";
+import InterviewPage from "./pages/InterviewPage";
 import TempoLayout from "./components/TempoLayout";
 import { useAuth } from "./_core/hooks/useAuth";
 import { getLoginUrl } from "./const";
@@ -79,6 +80,13 @@ function Router() {
         {() => (
           <ProtectedLayout>
             <ApprovalsPage />
+          </ProtectedLayout>
+        )}
+      </Route>
+      <Route path="/interviews">
+        {() => (
+          <ProtectedLayout>
+            <InterviewPage />
           </ProtectedLayout>
         )}
       </Route>

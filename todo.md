@@ -22,7 +22,7 @@
 - [x] admin-proxy 라우터 (biz-pt.com 로그인/데이터 연동)
 - [x] approval 라우터 (승인요청 CRUD)
 - [x] interview 라우터 (면담기록 CRUD)
-- [ ] dashboard 라우터 (KPI, PvA 분석)
+- [x] dashboard 라우터 (KPI, todayStats, 어드민 연동)
 
 ## 프론트엔드
 - [x] 전체 디자인 토큰 설정 (색상, 폰트, 다크모드)
@@ -35,10 +35,12 @@
 - [x] 주말간이보고 페이지
 - [x] 회원 모니터링 페이지 (오늘 신규/탈퇴, 트레이너 스케줄)
 - [x] 승인요청 로그 페이지 (생성/처리)
+- [x] 면담기록 페이지 (유형별 필터, 후속조치)
 - [x] 어드민 연동 설정 페이지 (로그인, 세션 상태)
-- [ ] 면담기록 페이지
-- [ ] 조직 관리 페이지 (관리자 전용)
-- [ ] 개인 성장 리포트 페이지
+- [x] Home.tsx render 중 navigate 버그 수정 (useEffect로 이동)
+- [x] TempoLayout 중첩 a 태그 버그 수정
+- [ ] 조직 관리 페이지 (관리자 전용) - 향후 구현
+- [ ] 개인 성장 리포트 페이지 - 향후 구현
 
 ## 어드민 연동
 - [x] biz-pt.com CSRF 토큰 획득
@@ -50,6 +52,4 @@
 - [x] 알림 동기화
 
 ## 테스트
-- [ ] todo 라우터 vitest
-- [ ] schedule 라우터 vitest
-- [ ] admin-proxy 라우터 vitest
+- [x] todo/schedule/admin-proxy 라우터 vitest (8 tests passed)
