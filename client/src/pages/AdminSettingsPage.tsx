@@ -48,7 +48,7 @@ export default function AdminSettingsPage() {
     loginMutation.mutate({ id, password });
   }
 
-  const isConnected = sessionStatus === true;
+  const isConnected = (sessionStatus as any)?.valid === true;
 
   return (
     <div className="p-6 space-y-6 max-w-2xl">
@@ -164,13 +164,14 @@ export default function AdminSettingsPage() {
         <CardContent className="px-4 pb-4">
           <div className="space-y-2">
             {[
-              { label: "트레이너 목록", endpoint: "/api/common/trainers?listType=all", status: isConnected },
-              { label: "오늘 회원 현황 (신규/탈퇴)", endpoint: "/api/monitoring", status: isConnected },
-              { label: "탈퇴 신청 리스트", endpoint: "/api/members?status=cancellation", status: isConnected },
-              { label: "신규 회원 리스트", endpoint: "/api/members?status=new", status: isConnected },
-              { label: "수익화 데이터", endpoint: "/api/settlement/trainers", status: isConnected },
-              { label: "트레이너 스케줄", endpoint: "/api/schedules/trainer", status: isConnected },
-              { label: "알림", endpoint: "/api/notifications", status: isConnected },
+              { label: "트레이너 목록", endpoint: "/api/common/trainers?listType=all", status: isConnected, available: true },
+              { label: "알림 목록", endpoint: "/api/notifications", status: isConnected, available: true },
+              { label: "알림 카운트", endpoint: "/api/notice/notification-count", status: isConnected, available: true },
+              { label: "긴급 공지", endpoint: "/api/notice/emergency", status: isConnected, available: true },
+              { label: "회원 목록 (어드민 직접 이동)", endpoint: "admin.biz-pt.com/manage/members", status: isConnected, available: false },
+              { label: "탈퇴 신청 (어드민 직접 이동)", endpoint: "admin.biz-pt.com/manage/withdrawal-requests", status: isConnected, available: false },
+              { label: "수익화 (어드민 직접 이동)", endpoint: "admin.biz-pt.com/manage/monetizations/master", status: isConnected, available: false },
+              { label: "스케줄 (어드민 직접 이동)", endpoint: "admin.biz-pt.com/schedules/trainer", status: isConnected, available: false },
             ].map(({ label, endpoint, status }) => (
               <div key={endpoint} className="flex items-center justify-between py-1.5 border-b border-border/30 last:border-0">
                 <div>

@@ -225,9 +225,11 @@ export const appRouter = router({
         }
         return { created: created.length };
       }),
+    deleteTemplate: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(({ input }) => db.deleteScheduleTemplate(input.id)),
   }),
-
-  // ─── Reports ──────────────────────────────────────────────────────────────
+  // ─── Reports ───────────────────────────────────────────────────────────────
   report: router({
     daily: protectedProcedure
       .input(z.object({ reportDate: z.string() }))
@@ -383,23 +385,13 @@ export const appRouter = router({
       .input(z.object({ id: z.string(), password: z.string() }))
       .mutation(({ input }) => adminProxy.loginToAdmin(input.id, input.password)),
 
-    sessionStatus: protectedProcedure.query(() => adminProxy.checkAdminSession()),
-
+      sessionStatus: protectedProcedure.query(() => adminProxy.checkAdminSession()),
     trainers: protectedProcedure.query(() => adminProxy.fetchTrainers()),
-
-    todayStats: protectedProcedure.query(() => adminProxy.fetchTodayMemberStats()),
-
-    cancellations: protectedProcedure.query(() => adminProxy.fetchCancellationList()),
-
-    newMembers: protectedProcedure.query(() => adminProxy.fetchNewMemberList()),
-
-    revenue: protectedProcedure.query(() => adminProxy.fetchRevenueData()),
-
-    trainerSchedule: protectedProcedure
-      .input(z.object({ trainerId: z.string().optional() }))
-      .query(({ input }) => adminProxy.fetchTrainerSchedule(input.trainerId)),
-
     notifications: protectedProcedure.query(() => adminProxy.fetchNotifications()),
+    notificationCount: protectedProcedure.query(() => adminProxy.fetchNotificationCount()),
+    emergencyNotice: protectedProcedure.query(() => adminProxy.fetchEmergencyNotice()),
+    // 어드민 직접 링크 URL 반환 (회원/탈퇴/수익화/스케줄은 REST API 없음)
+    links: protectedProcedure.query(() => adminProxy.ADMIN_LINKS),
   }),
 });
 

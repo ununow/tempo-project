@@ -39,6 +39,11 @@
 - [x] 어드민 연동 설정 페이지 (로그인, 세션 상태)
 - [x] Home.tsx render 중 navigate 버그 수정 (useEffect로 이동)
 - [x] TempoLayout 중첩 a 태그 버그 수정
+- [x] TO-DO 주단위 시간 분배 UI (슬라이더 + 저장)
+- [x] TO-DO 분기/반기/연간/지정 탭 확장
+- [x] 스케줄러 템플릿 관리 패널 (생성/삭제/적용)
+- [x] adminProxy.ts 실제 API 경로로 수정 (trainers, notifications, emergency)
+- [x] 회원 모니터링 어드민 직접 링크 연결 방식으로 개선
 - [ ] 조직 관리 페이지 (관리자 전용) - 향후 구현
 - [ ] 개인 성장 리포트 페이지 - 향후 구현
 

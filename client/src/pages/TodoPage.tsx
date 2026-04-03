@@ -12,12 +12,11 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import {
   Plus, CheckCircle2, Circle, Clock, ChevronDown, ChevronUp,
-  Pencil, Trash2, Timer, BarChart3, Calendar, Filter, Target
+  Pencil, Trash2, Timer, Target, Filter, CalendarDays, Layers, X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { format, startOfMonth, endOfMonth, eachWeekOfInterval, startOfWeek, endOfWeek, addWeeks } from "date-fns";
-import { ko } from "date-fns/locale";
+import { format, startOfMonth, endOfMonth, eachWeekOfInterval, endOfWeek, getISOWeek, getYear } from "date-fns";
 
 const PRIORITY_LABELS: Record<string, string> = { high: "높음", medium: "보통", low: "낮음" };
 const PRIORITY_COLORS: Record<string, string> = {
@@ -26,10 +25,25 @@ const PRIORITY_COLORS: Record<string, string> = {
   low: "text-green-400 border-green-400/30 bg-green-400/10",
 };
 const STATUS_LABELS: Record<string, string> = { pending: "대기", in_progress: "진행중", done: "완료", cancelled: "취소" };
-const PERIOD_LABELS: Record<string, string> = { monthly: "월간", weekly: "주간", daily: "일일", quarterly: "분기", halfyear: "반기", yearly: "연간" };
+const PERIOD_LABELS: Record<string, string> = {
+  monthly: "월간", weekly: "주간", daily: "일일",
+  quarterly: "분기", halfyear: "반기", yearly: "연간", custom: "지정"
+};
+
+const TAB_LIST = [
+  { value: "monthly", label: "월간" },
+  { value: "weekly", label: "주간" },
+  { value: "daily", label: "일일" },
+  { value: "quarterly", label: "분기" },
+  { value: "halfyear", label: "반기" },
+  { value: "yearly", label: "연간" },
+  { value: "custom", label: "지정" },
+];
 
 const now = new Date();
 const CURRENT_MONTH = format(now, "yyyy-MM");
+const CURRENT_YEAR = now.getFullYear();
+const CURRENT_WEEK = getISOWeek(now);
 
 function getWeeksOfMonth(yearMonth: string) {
   const [year, month] = yearMonth.split("-").map(Number);
@@ -39,17 +53,190 @@ function getWeeksOfMonth(yearMonth: string) {
   return weeks.map((weekStart, i) => {
     const ws = weekStart < start ? start : weekStart;
     const we = endOfWeek(weekStart, { weekStartsOn: 1 }) > end ? end : endOfWeek(weekStart, { weekStartsOn: 1 });
-    return { label: `${i + 1}주차 (${format(ws, "M/d")}~${format(we, "M/d")})`, weekNum: i + 1, start: ws, end: we };
+    return {
+      label: `${i + 1}주차 (${format(ws, "M/d")}~${format(we, "M/d")})`,
+      weekNum: i + 1,
+      isoWeek: getISOWeek(ws),
+      year: getYear(ws),
+      start: ws, end: we
+    };
   });
 }
 
+// ─── 주단위 시간 분배 모달 ─────────────────────────────────────────────────────
+function WeekSplitModal({ todo, onClose }: { todo: any; onClose: () => void }) {
+  const currentYear = CURRENT_YEAR;
+  const weeks = useMemo(() => getWeeksOfMonth(CURRENT_MONTH), []);
+
+  const { data: splits, refetch } = trpc.todo.weekSplits.useQuery({ todoId: todo.id });
+  const upsertMutation = trpc.todo.upsertWeekSplit.useMutation({
+    onSuccess: () => { refetch(); toast.success("저장되었습니다."); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const [localSplits, setLocalSplits] = useState<Record<string, number>>({});
+
+  const getSplitKey = (year: number, week: number) => `${year}-${week}`;
+  const getPlanned = (year: number, isoWeek: number) => {
+    const key = getSplitKey(year, isoWeek);
+    if (localSplits[key] !== undefined) return localSplits[key];
+    const found = (splits as any[])?.find((s: any) => s.year === year && s.week === isoWeek);
+    return found ? Math.round(found.plannedMinutes / 60 * 10) / 10 : 0;
+  };
+
+  const totalPlanned = weeks.reduce((sum, w) => sum + getPlanned(w.year, w.isoWeek), 0);
+  const totalEstimated = Math.round((todo.estimatedMinutes ?? 0) / 60 * 10) / 10;
+
+  function handleSave(year: number, isoWeek: number, hours: number) {
+    upsertMutation.mutate({
+      todoId: todo.id,
+      year,
+      week: isoWeek,
+      plannedMinutes: Math.round(hours * 60),
+    });
+  }
+
+  return (
+    <Dialog open onOpenChange={() => onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Layers className="h-4 w-4 text-primary" />
+            주단위 시간 분배
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
+            <p className="font-medium text-sm">{todo.title}</p>
+            <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1"><Clock className="h-3 w-3" />총 예상: {totalEstimated}h</span>
+              <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />배분됨: {Math.round(totalPlanned * 10) / 10}h</span>
+              <span className={cn("font-medium", totalPlanned > totalEstimated ? "text-red-400" : "text-green-400")}>
+                {totalPlanned > totalEstimated ? `초과 ${Math.round((totalPlanned - totalEstimated) * 10) / 10}h` : `여유 ${Math.round((totalEstimated - totalPlanned) * 10) / 10}h`}
+              </span>
+            </div>
+            <Progress value={totalEstimated > 0 ? Math.min((totalPlanned / totalEstimated) * 100, 100) : 0} className="h-1.5 mt-2" />
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">이번 달 주차별 배분 ({CURRENT_MONTH})</p>
+            {weeks.map((w) => {
+              const val = getPlanned(w.year, w.isoWeek);
+              return (
+                <div key={w.weekNum} className="flex items-center gap-3">
+                  <div className="w-32 flex-shrink-0">
+                    <p className="text-xs font-medium">{w.label}</p>
+                    <p className="text-xs text-muted-foreground">ISO {w.isoWeek}주</p>
+                  </div>
+                  <Slider
+                    min={0} max={Math.max(totalEstimated, 20)} step={0.5}
+                    value={[val]}
+                    onValueChange={([v]) => setLocalSplits(prev => ({ ...prev, [getSplitKey(w.year, w.isoWeek)]: v }))}
+                    className="flex-1"
+                  />
+                  <div className="w-16 flex items-center gap-1">
+                    <Input
+                      type="number" min={0} max={40} step={0.5}
+                      value={val}
+                      onChange={(e) => setLocalSplits(prev => ({ ...prev, [getSplitKey(w.year, w.isoWeek)]: Number(e.target.value) }))}
+                      className="h-7 text-xs w-14 text-center"
+                    />
+                    <span className="text-xs text-muted-foreground">h</span>
+                  </div>
+                  <Button
+                    size="sm" variant="outline" className="h-7 text-xs px-2"
+                    onClick={() => handleSave(w.year, w.isoWeek, getPlanned(w.year, w.isoWeek))}
+                    disabled={upsertMutation.isPending}
+                  >저장</Button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>닫기</Button>
+          <Button
+            onClick={() => {
+              weeks.forEach(w => {
+                const val = getPlanned(w.year, w.isoWeek);
+                if (val > 0) handleSave(w.year, w.isoWeek, val);
+              });
+            }}
+            disabled={upsertMutation.isPending}
+          >전체 저장</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── TO-DO 카드 ───────────────────────────────────────────────────────────────
+function TodoCard({ todo, onEdit, onDelete, onWeekSplit, updateMutation }: {
+  todo: any; onEdit: () => void; onDelete: () => void; onWeekSplit: () => void;
+  updateMutation: any;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className={cn(
+      "bg-card border rounded-xl p-4 transition-all",
+      todo.status === "done" ? "border-border/50 opacity-70" : "border-border hover:border-primary/30"
+    )}>
+      <div className="flex items-start gap-3">
+        <button
+          onClick={() => updateMutation.mutate({ id: todo.id, status: todo.status === "done" ? "pending" : "done" })}
+          className="mt-0.5 flex-shrink-0"
+        >
+          {todo.status === "done"
+            ? <CheckCircle2 className="w-5 h-5 text-green-500" />
+            : <Circle className="w-5 h-5 text-muted-foreground hover:text-primary transition-colors" />}
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={cn("font-medium text-foreground", todo.status === "done" && "line-through text-muted-foreground")}>
+              {todo.title}
+            </span>
+            <Badge variant="outline" className={cn("text-xs", PRIORITY_COLORS[todo.priority])}>
+              {PRIORITY_LABELS[todo.priority]}
+            </Badge>
+            <Badge variant="secondary" className="text-xs">{STATUS_LABELS[todo.status]}</Badge>
+            {todo.week && <Badge variant="outline" className="text-xs">{todo.week}주차</Badge>}
+            {todo.category && <Badge variant="outline" className="text-xs text-primary/70">{todo.category}</Badge>}
+          </div>
+          {todo.description && (
+            <p className="text-xs text-muted-foreground mt-1 truncate">{todo.description}</p>
+          )}
+          <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+            {todo.estimatedMinutes && (
+              <span className="flex items-center gap-1"><Clock className="w-3 h-3" />예상 {(todo.estimatedMinutes/60).toFixed(1)}h</span>
+            )}
+            {todo.actualMinutes && (
+              <span className="flex items-center gap-1"><Timer className="w-3 h-3" />실제 {(todo.actualMinutes/60).toFixed(1)}h</span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <Button variant="ghost" size="icon" className="w-7 h-7" title="주단위 시간 분배" onClick={onWeekSplit}>
+            <Layers className="w-3 h-3 text-primary/70" />
+          </Button>
+          <Button variant="ghost" size="icon" className="w-7 h-7" onClick={onEdit}>
+            <Pencil className="w-3 h-3" />
+          </Button>
+          <Button variant="ghost" size="icon" className="w-7 h-7 text-destructive hover:text-destructive" onClick={onDelete}>
+            <Trash2 className="w-3 h-3" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TodoPage() {
-  const [tab, setTab] = useState<"monthly" | "weekly" | "daily">("monthly");
+  const [tab, setTab] = useState<string>("monthly");
   const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH);
-  const [selectedWeek, setSelectedWeek] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
   const [editItem, setEditItem] = useState<any>(null);
   const [filterStatus, setFilterStatus] = useState("all");
+  const [weekSplitTodo, setWeekSplitTodo] = useState<any>(null);
 
   const [form, setForm] = useState({
     title: "", description: "", periodType: "monthly" as string,
@@ -59,7 +246,7 @@ export default function TodoPage() {
 
   const weeks = useMemo(() => getWeeksOfMonth(selectedMonth), [selectedMonth]);
 
-  const { data: todos, refetch } = trpc.todo.list.useQuery({ periodType: tab });
+  const { data: todos, refetch } = trpc.todo.list.useQuery({ periodType: tab as any });
   const createMutation = trpc.todo.create.useMutation({
     onSuccess: () => { refetch(); setShowAdd(false); resetForm(); toast.success("TO-DO가 추가되었습니다."); },
     onError: (e) => toast.error(e.message),
@@ -73,7 +260,6 @@ export default function TodoPage() {
     onError: (e) => toast.error(e.message),
   });
 
-
   function resetForm() {
     setForm({ title: "", description: "", periodType: tab, priority: "medium", estimatedHours: 1, weekNum: 1, targetMonth: CURRENT_MONTH, category: "" });
   }
@@ -81,15 +267,15 @@ export default function TodoPage() {
   function handleSubmit() {
     if (!form.title.trim()) { toast.error("제목을 입력해주세요."); return; }
     if (editItem) {
-      updateMutation.mutate({ id: editItem.id, title: form.title, description: form.description, priority: form.priority as any, estimatedMinutes: form.estimatedHours * 60 });
+      updateMutation.mutate({ id: editItem.id, title: form.title, description: form.description, priority: form.priority as any, estimatedMinutes: Math.round(form.estimatedHours * 60) });
     } else {
-      createMutation.mutate({ title: form.title, description: form.description, periodType: form.periodType as any, priority: form.priority as any, estimatedMinutes: form.estimatedHours * 60, week: form.weekNum, category: form.category });
+      createMutation.mutate({ title: form.title, description: form.description, periodType: form.periodType as any, priority: form.priority as any, estimatedMinutes: Math.round(form.estimatedHours * 60), week: form.weekNum, category: form.category });
     }
   }
 
   function openEdit(todo: any) {
     setEditItem(todo);
-    setForm({ title: todo.title, description: todo.description ?? "", periodType: todo.periodType, priority: todo.priority, estimatedHours: todo.estimatedHours ?? 1, weekNum: todo.weekNum ?? 1, targetMonth: todo.targetMonth ?? CURRENT_MONTH, category: todo.category ?? "" });
+    setForm({ title: todo.title, description: todo.description ?? "", periodType: todo.periodType, priority: todo.priority, estimatedHours: Math.round((todo.estimatedMinutes ?? 60) / 60 * 10) / 10, weekNum: todo.week ?? 1, targetMonth: todo.targetMonth ?? CURRENT_MONTH, category: todo.category ?? "" });
     setShowAdd(true);
   }
 
@@ -108,7 +294,7 @@ export default function TodoPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-foreground">TO-DO 관리</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">월간·주간·일일 목표를 시간 단위로 계획하세요</p>
+          <p className="text-sm text-muted-foreground mt-0.5">일일·주간·월간·분기·반기·연간 목표를 시간 단위로 계획하세요</p>
         </div>
         <Button onClick={() => { setEditItem(null); resetForm(); setShowAdd(true); }} className="gap-2">
           <Plus className="w-4 h-4" />TO-DO 추가
@@ -136,7 +322,7 @@ export default function TodoPage() {
       {/* Progress */}
       <div className="bg-card border border-border rounded-xl p-4">
         <div className="flex justify-between text-sm mb-2">
-          <span className="text-muted-foreground font-medium">전체 달성률</span>
+          <span className="text-muted-foreground font-medium">달성률 ({PERIOD_LABELS[tab] ?? tab})</span>
           <span className="font-bold text-foreground">{rate}%</span>
         </div>
         <Progress value={rate} className="h-2.5" />
@@ -149,12 +335,12 @@ export default function TodoPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
-        <div className="flex items-center justify-between">
-          <TabsList>
-            <TabsTrigger value="monthly">월간</TabsTrigger>
-            <TabsTrigger value="weekly">주간</TabsTrigger>
-            <TabsTrigger value="daily">일일</TabsTrigger>
+      <Tabs value={tab} onValueChange={(v) => setTab(v)}>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <TabsList className="flex-wrap h-auto gap-1">
+            {TAB_LIST.map(({ value, label }) => (
+              <TabsTrigger key={value} value={value} className="text-xs">{label}</TabsTrigger>
+            ))}
           </TabsList>
           <Select value={filterStatus} onValueChange={setFilterStatus}>
             <SelectTrigger className="w-28 h-8 text-xs">
@@ -170,74 +356,37 @@ export default function TodoPage() {
           </Select>
         </div>
 
-        {["monthly", "weekly", "daily"].map((period) => (
-          <TabsContent key={period} value={period} className="mt-4 space-y-2">
+        {TAB_LIST.map(({ value }) => (
+          <TabsContent key={value} value={value} className="mt-4 space-y-2">
             {filtered.length === 0 ? (
               <div className="text-center py-16 text-muted-foreground">
                 <Target className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">TO-DO가 없습니다.</p>
+                <p className="text-sm">{PERIOD_LABELS[value]} TO-DO가 없습니다.</p>
                 <Button variant="outline" size="sm" className="mt-3 gap-1.5"
-                  onClick={() => { setEditItem(null); resetForm(); setForm(f => ({ ...f, periodType: period })); setShowAdd(true); }}>
+                  onClick={() => { setEditItem(null); resetForm(); setForm(f => ({ ...f, periodType: value })); setShowAdd(true); }}>
                   <Plus className="w-3 h-3" />추가하기
                 </Button>
               </div>
             ) : (
               filtered.map((todo: any) => (
-                <div key={todo.id} className={cn(
-                  "bg-card border rounded-xl p-4 transition-all",
-                  todo.status === "done" ? "border-border/50 opacity-70" : "border-border hover:border-primary/30"
-                )}>
-                  <div className="flex items-start gap-3">
-                    <button
-                      onClick={() => updateMutation.mutate({ id: todo.id, status: todo.status === "done" ? "pending" : "done" })}
-                      className="mt-0.5 flex-shrink-0"
-                    >
-                      {todo.status === "done"
-                        ? <CheckCircle2 className="w-5 h-5 text-green-500" />
-                        : <Circle className="w-5 h-5 text-muted-foreground hover:text-primary transition-colors" />}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={cn("font-medium text-foreground", todo.status === "done" && "line-through text-muted-foreground")}>
-                          {todo.title}
-                        </span>
-                        <Badge variant="outline" className={cn("text-xs", PRIORITY_COLORS[todo.priority])}>
-                          {PRIORITY_LABELS[todo.priority]}
-                        </Badge>
-                        <Badge variant="secondary" className="text-xs">
-                          {STATUS_LABELS[todo.status]}
-                        </Badge>
-                        {todo.week && <Badge variant="outline" className="text-xs">{todo.week}주차</Badge>}
-                      </div>
-                      {todo.description && (
-                        <p className="text-xs text-muted-foreground mt-1 truncate">{todo.description}</p>
-                      )}
-                      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                        {todo.estimatedMinutes && (
-                          <span className="flex items-center gap-1"><Clock className="w-3 h-3" />예상 {(todo.estimatedMinutes/60).toFixed(1)}h</span>
-                        )}
-                        {todo.actualMinutes && (
-                          <span className="flex items-center gap-1"><Timer className="w-3 h-3" />실제 {(todo.actualMinutes/60).toFixed(1)}h</span>
-                        )}
-                        {todo.category && <span className="text-primary/70">{todo.category}</span>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => openEdit(todo)}>
-                        <Pencil className="w-3 h-3" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="w-7 h-7 text-destructive hover:text-destructive"
-                        onClick={() => deleteMutation.mutate({ id: todo.id })}>
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
+                <TodoCard
+                  key={todo.id}
+                  todo={todo}
+                  onEdit={() => openEdit(todo)}
+                  onDelete={() => deleteMutation.mutate({ id: todo.id })}
+                  onWeekSplit={() => setWeekSplitTodo(todo)}
+                  updateMutation={updateMutation}
+                />
               ))
             )}
           </TabsContent>
         ))}
       </Tabs>
+
+      {/* 주단위 시간 분배 모달 */}
+      {weekSplitTodo && (
+        <WeekSplitModal todo={weekSplitTodo} onClose={() => setWeekSplitTodo(null)} />
+      )}
 
       {/* Add/Edit Dialog */}
       <Dialog open={showAdd} onOpenChange={(o) => { setShowAdd(o); if (!o) setEditItem(null); }}>
@@ -278,10 +427,14 @@ export default function TodoPage() {
             </div>
             <div className="space-y-2">
               <Label>예상 소요 시간: <span className="text-primary font-semibold">{form.estimatedHours}h</span></Label>
-              <Slider min={0.5} max={40} step={0.5} value={[form.estimatedHours]}
+              <Slider min={0.5} max={200} step={0.5} value={[form.estimatedHours]}
                 onValueChange={([v]) => setForm(f => ({ ...f, estimatedHours: v }))} />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>0.5h</span>
+                <span>200h</span>
+              </div>
             </div>
-            {form.periodType === "weekly" && (
+            {(form.periodType === "weekly" || form.periodType === "monthly") && (
               <div className="space-y-1.5">
                 <Label>주차 선택</Label>
                 <Select value={String(form.weekNum)} onValueChange={(v) => setForm(f => ({ ...f, weekNum: Number(v) }))}>

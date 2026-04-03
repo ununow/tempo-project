@@ -1,22 +1,23 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import {
-  ChevronLeft, ChevronRight, Plus, Clock, Trash2, Edit2,
-  Calendar, Layers, CheckSquare, Zap, Lock
+  ChevronLeft, ChevronRight, Plus, Trash2,
+  Calendar, Layers, CheckSquare, Zap, Lock, Settings, Users, X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/_core/hooks/useAuth";
 
-const HOURS = Array.from({ length: 14 }, (_, i) => i + 7); // 7:00 ~ 20:00
+const HOURS = Array.from({ length: 15 }, (_, i) => i + 7); // 7:00 ~ 21:00
 const DAYS = ["월", "화", "수", "목", "금", "토", "일"];
+const DAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
 
 const BLOCK_TYPE_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
   todo: { label: "TO-DO", color: "bg-blue-500/80 border-blue-400", icon: CheckSquare },
@@ -28,7 +29,7 @@ const BLOCK_TYPE_CONFIG: Record<string, { label: string; color: string; icon: an
 
 function getWeekDates(weekOffset: number) {
   const now = new Date();
-  const dayOfWeek = now.getDay(); // 0=일
+  const dayOfWeek = now.getDay();
   const monday = new Date(now);
   monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1) + weekOffset * 7);
   return Array.from({ length: 7 }, (_, i) => {
@@ -38,58 +39,180 @@ function getWeekDates(weekOffset: number) {
   });
 }
 
-function toDateStr(d: Date) {
-  return d.toISOString().split("T")[0];
-}
+function toDateStr(d: Date) { return d.toISOString().split("T")[0]; }
+function timeToMinutes(t: string) { const [h, m] = t.split(":").map(Number); return h * 60 + m; }
+function minutesToTime(m: number) { const h = Math.floor(m / 60); const min = m % 60; return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`; }
 
-function timeToMinutes(t: string) {
-  const [h, m] = t.split(":").map(Number);
-  return h * 60 + m;
-}
-
-function minutesToTime(m: number) {
-  const h = Math.floor(m / 60);
-  const min = m % 60;
-  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
-}
-
-const HOUR_HEIGHT = 60; // px per hour
+const HOUR_HEIGHT = 60;
 
 interface BlockFormState {
-  title: string;
-  blockType: string;
-  startTime: string;
-  endTime: string;
-  date: string;
-  note: string;
-  color: string;
-  todoId?: number;
+  title: string; blockType: string; startTime: string; endTime: string;
+  date: string; note: string; color: string; todoId?: number;
 }
-
 const DEFAULT_FORM: BlockFormState = {
-  title: "",
-  blockType: "free",
-  startTime: "09:00",
-  endTime: "10:00",
-  date: toDateStr(new Date()),
-  note: "",
-  color: "",
+  title: "", blockType: "free", startTime: "09:00", endTime: "10:00",
+  date: toDateStr(new Date()), note: "", color: "",
 };
 
+interface TemplateFormState {
+  name: string; dayOfWeek: number; startTime: string; endTime: string;
+  title: string; blockType: string; color: string;
+}
+const DEFAULT_TEMPLATE_FORM: TemplateFormState = {
+  name: "", dayOfWeek: 1, startTime: "09:00", endTime: "10:00",
+  title: "", blockType: "free", color: "",
+};
+
+// ─── 템플릿 관리 패널 ─────────────────────────────────────────────────────────
+function TemplatePanel({ onClose }: { onClose: () => void }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState<TemplateFormState>(DEFAULT_TEMPLATE_FORM);
+
+  const { data: templates = [], refetch } = trpc.schedule.templates.useQuery();
+  const createMutation = trpc.schedule.createTemplate.useMutation({
+    onSuccess: () => { refetch(); setShowAdd(false); setForm(DEFAULT_TEMPLATE_FORM); toast.success("템플릿이 추가되었습니다."); },
+    onError: (e) => toast.error(e.message),
+  });
+  const deleteMutation = trpc.schedule.deleteTemplate.useMutation({
+    onSuccess: () => { refetch(); toast.success("템플릿이 삭제되었습니다."); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  function handleCreate() {
+    if (!form.title.trim() || !form.name.trim()) { toast.error("이름과 제목을 입력해주세요."); return; }
+    const startMin = timeToMinutes(form.startTime);
+    const endMin = timeToMinutes(form.endTime);
+    if (endMin <= startMin) { toast.error("종료 시간이 시작 시간보다 늦어야 합니다."); return; }
+    createMutation.mutate({
+      name: form.name, dayOfWeek: form.dayOfWeek, startTime: form.startTime,
+      endTime: form.endTime, title: form.title, blockType: form.blockType as any, color: form.color || undefined,
+    });
+  }
+
+  const grouped = useMemo(() => {
+    const map: Record<number, any[]> = {};
+    for (const t of templates as any[]) {
+      if (!map[t.dayOfWeek]) map[t.dayOfWeek] = [];
+      map[t.dayOfWeek].push(t);
+    }
+    return map;
+  }, [templates]);
+
+  return (
+    <div className="w-72 flex-shrink-0 border-l border-border flex flex-col bg-card/50 overflow-hidden">
+      <div className="p-3 border-b border-border flex items-center justify-between">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+          <Calendar className="h-3 w-3" />주별 템플릿
+        </p>
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto p-2 space-y-3">
+        {[1, 2, 3, 4, 5, 6, 0].map(dow => {
+          const items = grouped[dow] ?? [];
+          if (items.length === 0) return null;
+          return (
+            <div key={dow}>
+              <p className="text-xs font-medium text-muted-foreground px-1 mb-1">{DAY_NAMES[dow]}요일</p>
+              <div className="space-y-1">
+                {items.map((t: any) => (
+                  <div key={t.id} className="flex items-center gap-2 p-2 rounded-md bg-muted/30 border border-border/50 group">
+                    <div className={cn("w-2 h-2 rounded-full flex-shrink-0", BLOCK_TYPE_CONFIG[t.blockType]?.color.split(" ")[0] ?? "bg-gray-400")} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{t.title}</p>
+                      <p className="text-xs text-muted-foreground">{t.startTime}–{t.endTime}</p>
+                    </div>
+                    <button
+                      onClick={() => deleteMutation.mutate({ id: t.id })}
+                      className="opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive/80"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+        {(templates as any[]).length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-6">템플릿이 없습니다.<br />아래 버튼으로 추가하세요.</p>
+        )}
+      </div>
+      <div className="p-2 border-t border-border">
+        {!showAdd ? (
+          <Button size="sm" variant="outline" className="w-full text-xs h-8 gap-1" onClick={() => setShowAdd(true)}>
+            <Plus className="h-3 w-3" />템플릿 추가
+          </Button>
+        ) : (
+          <div className="space-y-2">
+            <div>
+              <Label className="text-xs">템플릿 이름</Label>
+              <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="예: 오전 루틴" className="h-7 text-xs mt-0.5" />
+            </div>
+            <div>
+              <Label className="text-xs">블럭 제목</Label>
+              <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="예: 회원 상담" className="h-7 text-xs mt-0.5" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">요일</Label>
+                <Select value={String(form.dayOfWeek)} onValueChange={v => setForm(f => ({ ...f, dayOfWeek: Number(v) }))}>
+                  <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {[1,2,3,4,5,6,0].map(d => <SelectItem key={d} value={String(d)}>{DAY_NAMES[d]}요일</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">유형</Label>
+                <Select value={form.blockType} onValueChange={v => setForm(f => ({ ...f, blockType: v }))}>
+                  <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(BLOCK_TYPE_CONFIG).filter(([k]) => k !== "template").map(([k, v]) => (
+                      <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">시작</Label>
+                <Input type="time" value={form.startTime} onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))} className="h-7 text-xs mt-0.5" />
+              </div>
+              <div>
+                <Label className="text-xs">종료</Label>
+                <Input type="time" value={form.endTime} onChange={e => setForm(f => ({ ...f, endTime: e.target.value }))} className="h-7 text-xs mt-0.5" />
+              </div>
+            </div>
+            <div className="flex gap-1">
+              <Button size="sm" variant="outline" className="flex-1 h-7 text-xs" onClick={() => setShowAdd(false)}>취소</Button>
+              <Button size="sm" className="flex-1 h-7 text-xs" onClick={handleCreate} disabled={createMutation.isPending}>추가</Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function SchedulerPage() {
+  const { user } = useAuth();
   const [weekOffset, setWeekOffset] = useState(0);
   const [showDialog, setShowDialog] = useState(false);
   const [editBlock, setEditBlock] = useState<any>(null);
   const [form, setForm] = useState<BlockFormState>(DEFAULT_FORM);
   const [dragOver, setDragOver] = useState<{ date: string; hour: number } | null>(null);
   const [draggingTodo, setDraggingTodo] = useState<any>(null);
+  const [showTemplatePanel, setShowTemplatePanel] = useState(false);
 
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
   const startDate = toDateStr(weekDates[0]);
   const endDate = toDateStr(weekDates[6]);
 
   const { data: blocks = [], refetch } = trpc.schedule.blocks.useQuery({ startDate, endDate });
-  const { data: todos = [] } = trpc.todo.list.useQuery({ status: "pending" });
+  const { data: todos = [] } = trpc.todo.list.useQuery({ status: "pending" } as any);
 
   const createMutation = trpc.schedule.createBlock.useMutation({
     onSuccess: () => { refetch(); toast.success("블럭이 추가되었습니다."); setShowDialog(false); },
@@ -110,26 +233,13 @@ export default function SchedulerPage() {
 
   function openCreate(date: string, hour?: number) {
     setEditBlock(null);
-    setForm({
-      ...DEFAULT_FORM,
-      date,
-      startTime: hour !== undefined ? minutesToTime(hour * 60) : "09:00",
-      endTime: hour !== undefined ? minutesToTime(hour * 60 + 60) : "10:00",
-    });
+    setForm({ ...DEFAULT_FORM, date, startTime: hour !== undefined ? minutesToTime(hour * 60) : "09:00", endTime: hour !== undefined ? minutesToTime(hour * 60 + 60) : "10:00" });
     setShowDialog(true);
   }
 
   function openEdit(block: any) {
     setEditBlock(block);
-    setForm({
-      title: block.title,
-      blockType: block.blockType,
-      startTime: block.startTime,
-      endTime: block.endTime,
-      date: toDateStr(new Date(block.date)),
-      note: block.note ?? "",
-      color: block.color ?? "",
-    });
+    setForm({ title: block.title, blockType: block.blockType, startTime: block.startTime, endTime: block.endTime, date: toDateStr(new Date(block.date)), note: block.note ?? "", color: block.color ?? "" });
     setShowDialog(true);
   }
 
@@ -148,17 +258,7 @@ export default function SchedulerPage() {
 
   function handleDropOnCell(date: string, hour: number) {
     if (!draggingTodo) return;
-    const startTime = minutesToTime(hour * 60);
-    const endTime = minutesToTime(hour * 60 + 60);
-    createMutation.mutate({
-      title: draggingTodo.title,
-      blockType: "todo",
-      todoId: draggingTodo.id,
-      date,
-      startTime,
-      endTime,
-      durationMinutes: 60,
-    });
+    createMutation.mutate({ title: draggingTodo.title, blockType: "todo", todoId: draggingTodo.id, date, startTime: minutesToTime(hour * 60), endTime: minutesToTime(hour * 60 + 60), durationMinutes: 60 });
     setDraggingTodo(null);
     setDragOver(null);
   }
@@ -178,9 +278,10 @@ export default function SchedulerPage() {
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left: Todo list for drag */}
-      <div className="w-52 flex-shrink-0 border-r border-border flex flex-col bg-card/50">
+      <div className="w-48 flex-shrink-0 border-r border-border flex flex-col bg-card/50">
         <div className="p-3 border-b border-border">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">TO-DO 드래그</p>
+          <p className="text-xs text-muted-foreground mt-0.5">드래그하여 스케줄에 삽입</p>
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {(todos as any[]).length === 0 && (
@@ -203,7 +304,7 @@ export default function SchedulerPage() {
         </div>
       </div>
 
-      {/* Right: Week grid */}
+      {/* Center: Week grid */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
@@ -218,13 +319,18 @@ export default function SchedulerPage() {
             <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setWeekOffset(w => w + 1)}>
               <ChevronRight className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => setWeekOffset(0)}>
-              이번 주
-            </Button>
+            <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => setWeekOffset(0)}>이번 주</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => applyTemplateMutation.mutate({ weekStartDate: startDate })}>
-              <Layers className="h-3 w-3 mr-1" />템플릿 적용
+            <Button
+              variant={showTemplatePanel ? "default" : "outline"}
+              size="sm" className="h-8 text-xs"
+              onClick={() => setShowTemplatePanel(v => !v)}
+            >
+              <Settings className="h-3 w-3 mr-1" />템플릿 관리
+            </Button>
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => applyTemplateMutation.mutate({ weekStartDate: startDate })} disabled={applyTemplateMutation.isPending}>
+              <Layers className="h-3 w-3 mr-1" />이번 주 적용
             </Button>
             <Button size="sm" className="h-8 text-xs" onClick={() => openCreate(today)}>
               <Plus className="h-3 w-3 mr-1" />블럭 추가
@@ -234,10 +340,10 @@ export default function SchedulerPage() {
 
         {/* Grid */}
         <div className="flex-1 overflow-auto">
-          <div className="flex min-w-[700px]">
+          <div className="flex min-w-[600px]">
             {/* Time column */}
             <div className="w-12 flex-shrink-0 border-r border-border">
-              <div className="h-10 border-b border-border" /> {/* header spacer */}
+              <div className="h-10 border-b border-border" />
               {HOURS.map(h => (
                 <div key={h} className="border-b border-border/30 flex items-start justify-end pr-2 pt-1" style={{ height: HOUR_HEIGHT }}>
                   <span className="text-xs text-muted-foreground">{h}:00</span>
@@ -251,27 +357,16 @@ export default function SchedulerPage() {
               const isToday = dateStr === today;
               const dayBlocks = blocksByDate[dateStr] ?? [];
               return (
-                <div key={dateStr} className="flex-1 min-w-[80px] border-r border-border/50 last:border-r-0">
-                  {/* Day header */}
-                  <div className={cn(
-                    "h-10 border-b border-border flex flex-col items-center justify-center",
-                    isToday && "bg-primary/10"
-                  )}>
+                <div key={dateStr} className="flex-1 min-w-[70px] border-r border-border/50 last:border-r-0">
+                  <div className={cn("h-10 border-b border-border flex flex-col items-center justify-center", isToday && "bg-primary/10")}>
                     <span className="text-xs text-muted-foreground">{DAYS[di]}</span>
-                    <span className={cn("text-sm font-semibold", isToday && "text-primary")}>
-                      {date.getDate()}
-                    </span>
+                    <span className={cn("text-sm font-semibold", isToday && "text-primary")}>{date.getDate()}</span>
                   </div>
-
-                  {/* Hour cells */}
                   <div className="relative">
                     {HOURS.map(h => (
                       <div
                         key={h}
-                        className={cn(
-                          "border-b border-border/30 hover:bg-accent/30 transition-colors cursor-pointer",
-                          dragOver?.date === dateStr && dragOver?.hour === h && "bg-primary/20"
-                        )}
+                        className={cn("border-b border-border/30 hover:bg-accent/30 transition-colors cursor-pointer", dragOver?.date === dateStr && dragOver?.hour === h && "bg-primary/20")}
                         style={{ height: HOUR_HEIGHT }}
                         onClick={() => openCreate(dateStr, h)}
                         onDragOver={(e) => { e.preventDefault(); setDragOver({ date: dateStr, hour: h }); }}
@@ -279,8 +374,6 @@ export default function SchedulerPage() {
                         onDrop={() => handleDropOnCell(dateStr, h)}
                       />
                     ))}
-
-                    {/* Blocks overlay */}
                     {dayBlocks.map((block: any) => {
                       const startMin = timeToMinutes(block.startTime);
                       const endMin = timeToMinutes(block.endTime);
@@ -290,27 +383,17 @@ export default function SchedulerPage() {
                       return (
                         <div
                           key={block.id}
-                          className={cn(
-                            "absolute left-0.5 right-0.5 rounded border text-white text-xs overflow-hidden cursor-pointer group",
-                            cfg.color
-                          )}
+                          className={cn("absolute left-0.5 right-0.5 rounded border text-white text-xs overflow-hidden cursor-pointer group", cfg.color)}
                           style={{ top, height }}
                           onClick={(e) => { e.stopPropagation(); openEdit(block); }}
                         >
                           <div className="p-1 flex items-start justify-between gap-1">
                             <span className="font-medium leading-tight truncate">{block.title}</span>
-                            <button
-                              className="opacity-0 group-hover:opacity-100 flex-shrink-0"
-                              onClick={(e) => { e.stopPropagation(); deleteMutation.mutate({ id: block.id }); }}
-                            >
+                            <button className="opacity-0 group-hover:opacity-100 flex-shrink-0" onClick={(e) => { e.stopPropagation(); deleteMutation.mutate({ id: block.id }); }}>
                               <Trash2 className="h-3 w-3" />
                             </button>
                           </div>
-                          {height > 30 && (
-                            <div className="px-1 text-white/70">
-                              {block.startTime}–{block.endTime}
-                            </div>
-                          )}
+                          {height > 30 && <div className="px-1 text-white/70">{block.startTime}–{block.endTime}</div>}
                         </div>
                       );
                     })}
@@ -321,6 +404,9 @@ export default function SchedulerPage() {
           </div>
         </div>
       </div>
+
+      {/* Right: Template Panel */}
+      {showTemplatePanel && <TemplatePanel onClose={() => setShowTemplatePanel(false)} />}
 
       {/* Block Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
@@ -337,9 +423,7 @@ export default function SchedulerPage() {
               <div>
                 <Label className="text-xs">유형</Label>
                 <Select value={form.blockType} onValueChange={v => setForm(f => ({ ...f, blockType: v }))}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {Object.entries(BLOCK_TYPE_CONFIG).map(([k, v]) => (
                       <SelectItem key={k} value={k}>{v.label}</SelectItem>
@@ -369,9 +453,7 @@ export default function SchedulerPage() {
           </div>
           <DialogFooter className="gap-2">
             {editBlock && (
-              <Button variant="destructive" size="sm" onClick={() => { deleteMutation.mutate({ id: editBlock.id }); setShowDialog(false); }}>
-                삭제
-              </Button>
+              <Button variant="destructive" size="sm" onClick={() => { deleteMutation.mutate({ id: editBlock.id }); setShowDialog(false); }}>삭제</Button>
             )}
             <Button variant="outline" size="sm" onClick={() => setShowDialog(false)}>취소</Button>
             <Button size="sm" onClick={handleSubmit}>{editBlock ? "저장" : "추가"}</Button>

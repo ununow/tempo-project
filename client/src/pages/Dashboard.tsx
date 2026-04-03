@@ -52,9 +52,10 @@ function KpiCard({ title, value, sub, icon: Icon, trend, trendValue, color = "pr
 
 export default function Dashboard() {
   const { data: me } = trpc.auth.me.useQuery();
-  const { data: adminStats, isLoading: statsLoading, refetch: refetchStats } = trpc.admin.todayStats.useQuery(
+  const { data: adminTrainers, isLoading: statsLoading, refetch: refetchStats } = trpc.admin.trainers.useQuery(
     undefined, { retry: false }
   );
+  const { data: adminNotifications } = trpc.admin.notifications.useQuery(undefined, { retry: false });
   const { data: todos } = trpc.todo.list.useQuery({ periodType: "monthly" }, { retry: false });
 
   const todoStats = todos ? {
@@ -67,7 +68,7 @@ export default function Dashboard() {
   const completionRate = todoStats.total > 0
     ? Math.round((todoStats.done / todoStats.total) * 100) : 0;
 
-  const adminConnected = !!adminStats;
+  const adminConnected = Array.isArray(adminTrainers) && adminTrainers.length > 0;
 
   const weeklyData = [
     { day: "월", members: 142, new: 3, cancel: 1 },
@@ -113,10 +114,10 @@ export default function Dashboard() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-        <KpiCard title="전체 회원" value={adminStats ? (adminStats as any).totalMembers ?? "—" : "—"} icon={Users} trend="up" trendValue="+2" color="primary" />
-        <KpiCard title="오늘 신규" value={adminStats ? (adminStats as any).newToday ?? "—" : "—"} icon={UserPlus} trend="up" trendValue="오늘" color="green" />
-        <KpiCard title="오늘 탈퇴" value={adminStats ? (adminStats as any).cancelToday ?? "—" : "—"} icon={UserMinus} trend="neutral" trendValue="오늘" color="red" />
-        <KpiCard title="이번달 수익화" value={adminStats ? `${((adminStats as any).monthlyRevenue ?? 0).toLocaleString()}만` : "—"} icon={DollarSign} trend="up" trendValue="목표 대비" color="amber" />
+        <KpiCard title="트레이너 수" value={adminConnected ? (adminTrainers as any[]).length : "—"} icon={Users} trend="neutral" trendValue="연동됨" color="primary" />
+        <KpiCard title="오늘 신규" value={adminConnected ? "어드민 확인" : "—"} icon={UserPlus} trend="up" trendValue="어드민" color="green" />
+        <KpiCard title="오늘 탈퇴" value={adminConnected ? "어드민 확인" : "—"} icon={UserMinus} trend="neutral" trendValue="어드민" color="red" />
+        <KpiCard title="수익화" value={adminConnected ? "어드민 확인" : "—"} icon={DollarSign} trend="up" trendValue="어드민" color="amber" />
         <KpiCard title="TO-DO 달성률" value={`${completionRate}%`} sub={`${todoStats.done}/${todoStats.total} 완료`} icon={Target} trend={completionRate >= 70 ? "up" : "down"} trendValue="이번달" color="cyan" />
       </div>
 
@@ -220,15 +221,27 @@ export default function Dashboard() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-foreground">알림 & 공지</h2>
           </div>
-          {adminConnected ? (
-            <p className="text-xs text-muted-foreground text-center py-8">어드민에서 알림을 불러오는 중...</p>
+          {adminConnected && Array.isArray(adminNotifications) && adminNotifications.length > 0 ? (
+            <div className="space-y-2">
+              {(adminNotifications as any[]).slice(0, 4).map((n: any, i: number) => (
+                <div key={i} className={`flex items-start gap-2 p-2 rounded-lg ${n.isRead ? 'bg-muted/20' : 'bg-primary/5 border border-primary/20'}`}>
+                  <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${n.isRead ? 'bg-muted-foreground/40' : 'bg-primary'}`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs truncate">{n.title}</p>
+                    <p className="text-xs text-muted-foreground">{n.createDt}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-8 gap-3">
               <AlertCircle className="w-8 h-8 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground text-center">어드민 연동 후 실시간 알림을<br />확인할 수 있습니다</p>
-              <Link href="/admin-settings">
-                <Button variant="outline" size="sm" className="gap-1.5 text-xs"><Zap className="w-3 h-3" />연동 설정</Button>
-              </Link>
+              <p className="text-sm text-muted-foreground text-center">{adminConnected ? '새 알림이 없습니다' : '어드민 연동 후 실시간 알림을\n확인할 수 있습니다'}</p>
+              {!adminConnected && (
+                <Link href="/admin-settings">
+                  <Button variant="outline" size="sm" className="gap-1.5 text-xs"><Zap className="w-3 h-3" />연동 설정</Button>
+                </Link>
+              )}
             </div>
           )}
         </div>

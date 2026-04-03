@@ -1,12 +1,38 @@
 /**
  * admin.biz-pt.com 어드민 연동 서비스
- * NextAuth 기반 로그인 → 세션 쿠키 유지 → API 호출
+ *
+ * 확인된 REST API:
+ *   GET /api/trainers?listType=all          → 트레이너 목록
+ *   GET /api/notifications                  → 알림 목록
+ *   GET /api/notice/notification-count      → 알림 카운트
+ *   GET /api/notice/emergency               → 긴급 공지
+ *   GET /api/auth/session                   → 세션 확인
+ *
+ * 나머지(회원 목록, 탈퇴 신청, 수익화, 스케줄)는 Next.js RSC 전용으로
+ * 별도 REST API가 없음 → 어드민 페이지 직접 링크 방식으로 처리
  */
 import axios from "axios";
 import { getAdminCache, setAdminCache, getAdminSession, saveAdminSession } from "./db";
 
 const ADMIN_BASE = "https://admin.biz-pt.com";
 const CACHE_TTL = 300; // 5분
+
+// ─── 어드민 페이지 직접 링크 URL ─────────────────────────────────────────────
+export const ADMIN_LINKS = {
+  members:             `${ADMIN_BASE}/manage/members`,
+  withdrawalRequests:  `${ADMIN_BASE}/manage/withdrawal-requests`,
+  withdrawals:         `${ADMIN_BASE}/manage/withdrawals`,
+  monetizations:       `${ADMIN_BASE}/manage/monetizations/master`,
+  monetizationsTrainer:`${ADMIN_BASE}/manage/monetizations/trainer`,
+  scheduleTrainer:     `${ADMIN_BASE}/schedules/trainer`,
+  scheduleTemplates:   `${ADMIN_BASE}/schedules/templates`,
+  settlement:          `${ADMIN_BASE}/settlement/trainers`,
+  dashboard:           `${ADMIN_BASE}/dashboard`,
+  dashboardTrainer:    `${ADMIN_BASE}/dashboard/trainer`,
+  dashboardMonitoring: `${ADMIN_BASE}/dashboard/monitoring`,
+  memberDetail:        (uid: string | number) => `${ADMIN_BASE}/manage/members/${uid}`,
+  memberTab:           (uid: string | number, tab: string) => `${ADMIN_BASE}/manage/members/${uid}?tab=${tab}`,
+};
 
 // ─── 로그인 ───────────────────────────────────────────────────────────────────
 export async function loginToAdmin(id: string, password: string): Promise<{ success: boolean; sessionToken?: string; error?: string }> {
@@ -88,55 +114,42 @@ async function adminGet<T>(path: string, cacheKey?: string, ttl = CACHE_TTL): Pr
 }
 
 // ─── 트레이너 목록 ────────────────────────────────────────────────────────────
-export async function fetchTrainers() {
-  return adminGet<any[]>("/api/common/trainers?listType=all", "trainers:all", 600);
+// 응답: { success: true, data: [{ id, name, birthday, semester, role }] }
+export async function fetchTrainers(): Promise<{ id: string; name: string; birthday: string; semester: number; role: string }[] | null> {
+  const res = await adminGet<{ success: boolean; data: any[] }>("/api/trainers?listType=all", "trainers:all", 600);
+  return res?.data ?? null;
 }
 
-// ─── 회원 현황 (오늘 신규/탈퇴) ───────────────────────────────────────────────
-export async function fetchTodayMemberStats() {
-  const today = new Date().toISOString().split("T")[0];
-  return adminGet<any>(`/api/monitoring`, `monitoring:${today}`, 180);
+// ─── 알림 목록 ────────────────────────────────────────────────────────────────
+// 응답: { success: true, data: [{ id, title, isRead, type, url, createDt }] }
+export async function fetchNotifications(): Promise<{ id: string; title: string; isRead: boolean; type: string; url: string; createDt: string }[] | null> {
+  const res = await adminGet<{ success: boolean; data: any[] }>("/api/notifications", "notifications", 60);
+  return res?.data ?? null;
 }
 
-// ─── 탈퇴 신청 리스트 ─────────────────────────────────────────────────────────
-export async function fetchCancellationList() {
-  const today = new Date().toISOString().split("T")[0];
-  return adminGet<any[]>(`/api/members?status=cancellation`, `cancellations:${today}`, 120);
+// ─── 알림 카운트 ──────────────────────────────────────────────────────────────
+// 응답: { success: true, data: 0 }
+export async function fetchNotificationCount(): Promise<number> {
+  const res = await adminGet<{ success: boolean; data: number }>("/api/notice/notification-count", "notification_count", 60);
+  return res?.data ?? 0;
 }
 
-// ─── 신규 회원 리스트 ─────────────────────────────────────────────────────────
-export async function fetchNewMemberList() {
-  const today = new Date().toISOString().split("T")[0];
-  return adminGet<any[]>(`/api/members?status=new`, `new_members:${today}`, 120);
-}
-
-// ─── 수익화 데이터 ────────────────────────────────────────────────────────────
-export async function fetchRevenueData() {
-  const today = new Date().toISOString().split("T")[0];
-  const ym = today.substring(0, 7);
-  return adminGet<any>(`/api/settlement/trainers?listType=all`, `revenue:${ym}`, 600);
-}
-
-// ─── 트레이너별 회원 스케줄 ───────────────────────────────────────────────────
-export async function fetchTrainerSchedule(trainerId?: string) {
-  const path = trainerId ? `/api/schedules/trainer?trainerId=${trainerId}` : `/api/schedules/trainer`;
-  const key = `schedule:${trainerId ?? "all"}:${new Date().toISOString().split("T")[0]}`;
-  return adminGet<any>(path, key, 300);
-}
-
-// ─── 알림 ─────────────────────────────────────────────────────────────────────
-export async function fetchNotifications() {
-  return adminGet<any[]>("/api/notifications", "notifications", 60);
+// ─── 긴급 공지 ────────────────────────────────────────────────────────────────
+// 응답: { success: true, data: null | { ... } }
+export async function fetchEmergencyNotice(): Promise<any | null> {
+  const res = await adminGet<{ success: boolean; data: any }>("/api/notice/emergency", "emergency_notice", 120);
+  return res?.data ?? null;
 }
 
 // ─── 세션 상태 확인 ───────────────────────────────────────────────────────────
-export async function checkAdminSession(): Promise<boolean> {
+export async function checkAdminSession(): Promise<{ valid: boolean; user?: any }> {
   const headers = await getAuthHeaders();
-  if (!headers) return false;
+  if (!headers) return { valid: false };
   try {
     const res = await axios.get(`${ADMIN_BASE}/api/auth/session`, { headers, timeout: 5000 });
-    return !!res.data?.user;
+    const user = res.data?.user;
+    return { valid: !!user, user };
   } catch {
-    return false;
+    return { valid: false };
   }
 }

@@ -188,6 +188,13 @@ export async function getScheduleTemplates(userId: number) {
   ).orderBy(asc(scheduleTemplates.dayOfWeek), asc(scheduleTemplates.startTime));
 }
 
+export async function deleteScheduleTemplate(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.delete(scheduleTemplates).where(eq(scheduleTemplates.id, id));
+  return { success: true };
+}
+
 export async function createScheduleTemplate(data: typeof scheduleTemplates.$inferInsert) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
