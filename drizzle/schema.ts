@@ -328,3 +328,72 @@ export const favoriteBlocks = mysqlTable("favorite_blocks", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type FavoriteBlock = typeof favoriteBlocks.$inferSelect;
+
+// ─── Invitations (초대 시스템) ─────────────────────────────────────────────────────────────────────────────────
+export const invitations = mysqlTable("invitations", {
+  id: int("id").autoincrement().primaryKey(),
+  token: varchar("token", { length: 64 }).notNull().unique(),
+  invitedBy: int("invitedBy").notNull(),       // 초대한 사용자 ID
+  email: varchar("email", { length: 320 }),    // 이메일 지정 시
+  tempoRole: mysqlEnum("tempoRole", ["owner", "center_manager", "sub_manager", "trainer", "viewer"]).default("trainer").notNull(),
+  teamId: int("teamId"),                       // 팀 자동 배정
+  usedBy: int("usedBy"),                       // 사용한 사용자 ID
+  usedAt: timestamp("usedAt"),
+  expiresAt: timestamp("expiresAt").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type Invitation = typeof invitations.$inferSelect;
+
+// ─── Boards (게시판 카테고리) ─────────────────────────────────────────────────────────────────────────────────
+export const boards = mysqlTable("boards", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  description: text("description"),
+  icon: varchar("icon", { length: 50 }).default("MessageSquare"),
+  allowedRoles: text("allowedRoles").default("all"),  // JSON array of roles or 'all'
+  canWrite: text("canWrite").default("all"),           // JSON array of roles or 'all'
+  sortOrder: int("sortOrder").default(0),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdBy: int("createdBy").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type Board = typeof boards.$inferSelect;
+
+// ─── Posts (게시판 글) ──────────────────────────────────────────────────────────────────────────────────────────
+export const posts = mysqlTable("posts", {
+  id: int("id").autoincrement().primaryKey(),
+  boardId: int("boardId").notNull(),
+  authorId: int("authorId").notNull(),
+  title: varchar("title", { length: 300 }).notNull(),
+  content: text("content").notNull(),
+  isPinned: boolean("isPinned").default(false).notNull(),
+  viewCount: int("viewCount").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type Post = typeof posts.$inferSelect;
+
+// ─── UserFavorites (즐겨찾기 메뉴) ────────────────────────────────────────────────────────────────────────────────
+export const userFavorites = mysqlTable("user_favorites", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  href: varchar("href", { length: 200 }).notNull(),  // 메뉴 경로
+  label: varchar("label", { length: 100 }).notNull(),
+  icon: varchar("icon", { length: 50 }).default("Star"),
+  sortOrder: int("sortOrder").default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type UserFavorite = typeof userFavorites.$inferSelect;
+
+// ─── ExternalLinks (외부 링크 통합) ────────────────────────────────────────────────────────────────────────────────
+export const externalLinks = mysqlTable("external_links", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  title: varchar("title", { length: 200 }).notNull(),
+  url: text("url").notNull(),
+  icon: varchar("icon", { length: 50 }).default("Link"),  // Notion, Google, Obsidian, Custom
+  category: varchar("category", { length: 50 }).default("custom"),
+  sortOrder: int("sortOrder").default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type ExternalLink = typeof externalLinks.$inferSelect;

@@ -9,7 +9,10 @@ import {
   adminCache, adminSessions,
   teams, teamMembers, trainerMembers,
   favoriteBlocks,
+  invitations, boards, posts, userFavorites, externalLinks,
 } from "../drizzle/schema";
+import type { Invitation } from "../drizzle/schema";
+import crypto from "crypto";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -48,6 +51,11 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     if (user.lastSignedIn !== undefined) { values.lastSignedIn = user.lastSignedIn; updateSet.lastSignedIn = user.lastSignedIn; }
     if (user.role !== undefined) { values.role = user.role; updateSet.role = user.role; }
     else if (user.openId === ENV.ownerOpenId) { values.role = 'admin'; updateSet.role = 'admin'; }
+    // OWNER_OPEN_ID 일치 시 tempoRole=owner 자동 부여 (최초 가입 시에만)
+    if (user.openId === ENV.ownerOpenId && user.tempoRole === undefined) {
+      values.tempoRole = 'owner';
+      // onDuplicateKeyUpdate에서는 tempoRole을 덮어쓰지 않음 (이미 설정된 경우 유지)
+    }
     if (!values.lastSignedIn) values.lastSignedIn = new Date();
     if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
     await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
@@ -608,3 +616,129 @@ export async function deleteFavoriteBlock(id: number, userId: number) {
   if (!database) throw new Error("DB unavailable");
   await database.delete(favoriteBlocks).where(and(eq(favoriteBlocks.id, id), eq(favoriteBlocks.userId, userId)));
 }
+
+// ─── Invitations ──────────────────────────────────────────────────────────────────────────────────
+export async function getInvitations(invitedBy: number) {
+  const db = await getDb(); if (!db) return [];
+  return db.select().from(invitations).where(eq(invitations.invitedBy, invitedBy)).orderBy(desc(invitations.createdAt));
+}
+
+export async function createInvitation(input: {
+  invitedBy: number; tempoRole: Invitation["tempoRole"]; email?: string; teamId?: number; expiresInDays: number;
+}) {
+  const db = await getDb(); if (!db) throw new Error("DB not available");
+  const token = crypto.randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + input.expiresInDays * 86400000);
+  await db.insert(invitations).values({ token, invitedBy: input.invitedBy, tempoRole: input.tempoRole, email: input.email ?? null, teamId: input.teamId ?? null, expiresAt });
+  return { token, expiresAt };
+}
+
+export async function useInvitation(token: string, userId: number) {
+  const db = await getDb(); if (!db) throw new Error("DB not available");
+  const [inv] = await db.select().from(invitations).where(eq(invitations.token, token)).limit(1);
+  if (!inv) throw new Error("초대 링크가 유효하지 않습니다.");
+  if (inv.usedBy) throw new Error("이미 사용된 초대 링크입니다.");
+  if (new Date() > inv.expiresAt) throw new Error("만료된 초대 링크입니다.");
+  await db.update(invitations).set({ usedBy: userId, usedAt: new Date() }).where(eq(invitations.token, token));
+  await db.update(users).set({ tempoRole: inv.tempoRole, ...(inv.teamId ? { teamId: inv.teamId } : {}) }).where(eq(users.id, userId));
+  return { tempoRole: inv.tempoRole };
+}
+
+export async function deleteInvitation(id: number, invitedBy: number) {
+  const db = await getDb(); if (!db) return;
+  await db.delete(invitations).where(and(eq(invitations.id, id), eq(invitations.invitedBy, invitedBy)));
+}
+
+// ─── Boards ───────────────────────────────────────────────────────────────────
+export async function getBoards() {
+  const db = await getDb(); if (!db) return [];
+  return db.select().from(boards).where(eq(boards.isActive, true)).orderBy(boards.sortOrder, boards.createdAt);
+}
+
+export async function createBoard(input: { name: string; description?: string; icon?: string; createdBy: number }) {
+  const db = await getDb(); if (!db) throw new Error("DB not available");
+  const [result] = await db.insert(boards).values({ name: input.name, description: input.description ?? null, icon: input.icon ?? "MessageSquare", createdBy: input.createdBy });
+  return { id: (result as any).insertId };
+}
+
+export async function deleteBoard(id: number) {
+  const db = await getDb(); if (!db) return;
+  await db.update(boards).set({ isActive: false }).where(eq(boards.id, id));
+}
+
+// ─── Posts ────────────────────────────────────────────────────────────────────
+export async function getPosts(boardId: number) {
+  const db = await getDb(); if (!db) return [];
+  return db.select().from(posts).where(eq(posts.boardId, boardId)).orderBy(desc(posts.isPinned), desc(posts.createdAt));
+}
+
+export async function getPost(id: number) {
+  const db = await getDb(); if (!db) return null;
+  const [post] = await db.select().from(posts).where(eq(posts.id, id)).limit(1);
+  if (post) await db.update(posts).set({ viewCount: post.viewCount + 1 }).where(eq(posts.id, id));
+  return post ?? null;
+}
+
+export async function createPost(input: { boardId: number; authorId: number; title: string; content: string }) {
+  const db = await getDb(); if (!db) throw new Error("DB not available");
+  const [result] = await db.insert(posts).values(input);
+  return { id: (result as any).insertId };
+}
+
+export async function updatePost(id: number, authorId: number, input: { title?: string; content?: string }) {
+  const db = await getDb(); if (!db) return;
+  const set: Record<string, unknown> = { updatedAt: new Date() };
+  if (input.title) set.title = input.title;
+  if (input.content) set.content = input.content;
+  await db.update(posts).set(set).where(and(eq(posts.id, id), eq(posts.authorId, authorId)));
+}
+
+export async function deletePost(id: number, authorId: number) {
+  const db = await getDb(); if (!db) return;
+  await db.delete(posts).where(and(eq(posts.id, id), eq(posts.authorId, authorId)));
+}
+
+export async function pinPost(id: number, isPinned: boolean) {
+  const db = await getDb(); if (!db) return;
+  await db.update(posts).set({ isPinned }).where(eq(posts.id, id));
+}
+
+// ─── UserFavorites ────────────────────────────────────────────────────────────
+export async function getUserFavorites(userId: number) {
+  const db = await getDb(); if (!db) return [];
+  return db.select().from(userFavorites).where(eq(userFavorites.userId, userId)).orderBy(userFavorites.sortOrder, userFavorites.createdAt);
+}
+
+export async function addUserFavorite(input: { userId: number; href: string; label: string; icon?: string }) {
+  const db = await getDb(); if (!db) throw new Error("DB not available");
+  // 최대 5개 제한
+  const existing = await db.select().from(userFavorites).where(eq(userFavorites.userId, input.userId));
+  if (existing.length >= 5) throw new Error("즐겨찾기는 최대 5개까지 등록할 수 있습니다.");
+  const [result] = await db.insert(userFavorites).values({ userId: input.userId, href: input.href, label: input.label, icon: input.icon ?? "Star" });
+  return { id: (result as any).insertId };
+}
+
+export async function removeUserFavorite(id: number, userId: number) {
+  const db = await getDb(); if (!db) return;
+  await db.delete(userFavorites).where(and(eq(userFavorites.id, id), eq(userFavorites.userId, userId)));
+}
+
+// ─── ExternalLinks ────────────────────────────────────────────────────────────
+export async function getExternalLinks(userId: number) {
+  const db = await getDb(); if (!db) return [];
+  return db.select().from(externalLinks).where(eq(externalLinks.userId, userId)).orderBy(externalLinks.sortOrder, externalLinks.createdAt);
+}
+
+export async function addExternalLink(input: { userId: number; title: string; url: string; icon?: string; category?: string }) {
+  const db = await getDb(); if (!db) throw new Error("DB not available");
+  const [result] = await db.insert(externalLinks).values({ userId: input.userId, title: input.title, url: input.url, icon: input.icon ?? "Link", category: input.category ?? "custom" });
+  return { id: (result as any).insertId };
+}
+
+export async function removeExternalLink(id: number, userId: number) {
+  const db = await getDb(); if (!db) return;
+  await db.delete(externalLinks).where(and(eq(externalLinks.id, id), eq(externalLinks.userId, userId)));
+}
+
+// ─── Profile (updateUserProfile은 상단에 이미 존재) ──────────────────────────────────────────────────────────────────────────────────────────────
+// updateUserProfile 이미 정의됨 (line 79) - 중복 제거

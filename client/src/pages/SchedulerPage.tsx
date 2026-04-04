@@ -208,6 +208,7 @@ export default function SchedulerPage() {
   const [dragOver, setDragOver] = useState<{ date: string; hour: number } | null>(null);
   const [draggingTodo, setDraggingTodo] = useState<any>(null);
   const [draggingFav, setDraggingFav] = useState<any>(null);
+  const [draggingBlock, setDraggingBlock] = useState<any>(null); // 기존 블럭 이동
   const [leftTab, setLeftTab] = useState<"todo" | "fav">("todo");
   const [showAddFav, setShowAddFav] = useState(false);
   const [favForm, setFavForm] = useState({ title: "", blockType: "free", durationMinutes: 60, color: "", note: "" });
@@ -293,7 +294,16 @@ export default function SchedulerPage() {
   }
 
   function handleDropOnCell(date: string, hour: number) {
-    if (draggingTodo) {
+    if (draggingBlock) {
+      // 기존 블럭 이동 - 지속시간 유지
+      const origStart = timeToMinutes(draggingBlock.startTime);
+      const origEnd = timeToMinutes(draggingBlock.endTime);
+      const duration = origEnd - origStart;
+      const newStart = hour * 60;
+      const newEnd = newStart + duration;
+      updateMutation.mutate({ id: draggingBlock.id, date, startTime: minutesToTime(newStart), endTime: minutesToTime(Math.min(newEnd, 23 * 60)), durationMinutes: Math.min(duration, 23 * 60 - newStart) });
+      setDraggingBlock(null);
+    } else if (draggingTodo) {
       createMutation.mutate({ title: draggingTodo.title, blockType: "todo", todoId: draggingTodo.id, date, startTime: minutesToTime(hour * 60), endTime: minutesToTime(hour * 60 + 60), durationMinutes: 60 });
       setDraggingTodo(null);
     } else if (draggingFav) {
@@ -492,9 +502,12 @@ export default function SchedulerPage() {
                       return (
                         <div
                           key={block.id}
-                          className={cn("absolute left-0.5 right-0.5 rounded border text-white text-xs overflow-hidden cursor-pointer group", cfg.color)}
+                          draggable
+                          className={cn("absolute left-0.5 right-0.5 rounded border text-white text-xs overflow-hidden cursor-grab active:cursor-grabbing group", cfg.color, draggingBlock?.id === block.id && "opacity-40")}
                           style={{ top, height }}
-                          onClick={(e) => { e.stopPropagation(); openEdit(block); }}
+                          onDragStart={(e) => { e.stopPropagation(); setDraggingBlock(block); setDraggingTodo(null); setDraggingFav(null); }}
+                          onDragEnd={() => setDraggingBlock(null)}
+                          onClick={(e) => { e.stopPropagation(); if (!draggingBlock) openEdit(block); }}
                         >
                           <div className="p-1 flex items-start justify-between gap-1">
                             <span className="font-medium leading-tight truncate">{block.title}</span>
