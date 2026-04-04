@@ -51,10 +51,30 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     if (user.lastSignedIn !== undefined) { values.lastSignedIn = user.lastSignedIn; updateSet.lastSignedIn = user.lastSignedIn; }
     if (user.role !== undefined) { values.role = user.role; updateSet.role = user.role; }
     else if (user.openId === ENV.ownerOpenId) { values.role = 'admin'; updateSet.role = 'admin'; }
-    // OWNER_OPEN_ID 일치 시 tempoRole=owner 자동 부여 (최초 가입 시에만)
-    if (user.openId === ENV.ownerOpenId && user.tempoRole === undefined) {
+    // 1순위: OWNER_OPEN_ID 일치 시 tempoRole=owner 자동 부여
+    if (user.openId === ENV.ownerOpenId) {
       values.tempoRole = 'owner';
-      // onDuplicateKeyUpdate에서는 tempoRole을 덮어쓰지 않음 (이미 설정된 경우 유지)
+      values.role = 'admin';
+      // onDuplicateKeyUpdate에서도 owner/admin 유지
+      updateSet.tempoRole = 'owner';
+      updateSet.role = 'admin';
+    } else if (user.tempoRole !== undefined) {
+      values.tempoRole = user.tempoRole;
+      updateSet.tempoRole = user.tempoRole;
+    } else {
+      // 2순위: DB에 아무 사용자도 없으면 첫 번째 가입자를 owner로
+      try {
+        const existingCount = await db.select({ count: sql`COUNT(*)` }).from(users);
+        const count = Number((existingCount[0] as any).count);
+        if (count === 0) {
+          values.tempoRole = 'owner';
+          values.role = 'admin';
+          updateSet.tempoRole = 'owner';
+          updateSet.role = 'admin';
+        }
+      } catch {
+        // count 실패 시 기본값(trainer) 유지
+      }
     }
     if (!values.lastSignedIn) values.lastSignedIn = new Date();
     if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
