@@ -8,6 +8,7 @@ import {
   approvalRequests, memberInterviews,
   adminCache, adminSessions,
   teams, teamMembers, trainerMembers,
+  favoriteBlocks,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -352,6 +353,31 @@ export async function getAllTeams() {
   return database.select().from(teams).where(eq(teams.isActive, true));
 }
 
+export async function getTeamsWithMembers(teamIds?: number[]) {
+  const database = await getDb();
+  if (!database) return [];
+  const teamList = teamIds && teamIds.length > 0
+    ? await database.select().from(teams).where(and(inArray(teams.id, teamIds), eq(teams.isActive, true)))
+    : await database.select().from(teams).where(eq(teams.isActive, true));
+  if (teamList.length === 0) return [];
+  const allTeamIds = teamList.map(t => t.id);
+  const memberships = await database
+    .select({
+      teamId: teamMembers.teamId,
+      userId: teamMembers.userId,
+      userName: users.name,
+      userRole: users.tempoRole,
+      userEmail: users.email,
+    })
+    .from(teamMembers)
+    .leftJoin(users, eq(teamMembers.userId, users.id))
+    .where(inArray(teamMembers.teamId, allTeamIds));
+  return teamList.map(team => ({
+    ...team,
+    members: memberships.filter(m => m.teamId === team.id),
+  }));
+}
+
 export async function getTeamsByManager(managerId: number) {
   const database = await getDb();
   if (!database) return [];
@@ -547,4 +573,38 @@ export async function getUserBasicInfo(userIds: number[]) {
     name: users.name,
     tempoRole: users.tempoRole,
   }).from(users).where(inArray(users.id, userIds));
+}
+
+// ─── 즐겨찾기 블럭 ────────────────────────────────────────────────────────────
+export async function getFavoriteBlocks(userId: number) {
+  const database = await getDb();
+  if (!database) return [];
+  return database.select().from(favoriteBlocks).where(eq(favoriteBlocks.userId, userId));
+}
+
+export async function getFavoriteBlockById(id: number, userId: number) {
+  const database = await getDb();
+  if (!database) return null;
+  const rows = await database.select().from(favoriteBlocks)
+    .where(and(eq(favoriteBlocks.id, id), eq(favoriteBlocks.userId, userId)));
+  return rows[0] ?? null;
+}
+
+export async function createFavoriteBlock(data: {
+  userId: number;
+  title: string;
+  blockType: "todo" | "free" | "team_task" | "private";
+  durationMinutes: number;
+  color?: string;
+  note?: string;
+}) {
+  const database = await getDb();
+  if (!database) throw new Error("DB unavailable");
+  await database.insert(favoriteBlocks).values(data);
+}
+
+export async function deleteFavoriteBlock(id: number, userId: number) {
+  const database = await getDb();
+  if (!database) throw new Error("DB unavailable");
+  await database.delete(favoriteBlocks).where(and(eq(favoriteBlocks.id, id), eq(favoriteBlocks.userId, userId)));
 }

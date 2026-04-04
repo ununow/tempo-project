@@ -46,9 +46,9 @@ export default function TeamSettingsPage() {
   const { data: teams = [], refetch: refetchTeams, isLoading: loadingTeams } =
     trpc.team.list.useQuery();
 
-  // ─── 사용자 목록 (책임센터장 이상) ────────────────────────────────────────
+  // ─── 사용자 목록 (부책임센터장 이상) ────────────────────────────────────────
   const { data: allUsers = [], refetch: refetchUsers, isLoading: loadingUsers } =
-    trpc.userManagement.list.useQuery(undefined, { enabled: isCenterManager });
+    trpc.userManagement.list.useQuery(undefined, { enabled: isManager });
 
   // ─── 트레이너 목록 (어드민) ────────────────────────────────────────────────
   const { data: adminTrainers } = trpc.admin.trainers.useQuery(undefined, { retry: false });
@@ -97,18 +97,7 @@ export default function TeamSettingsPage() {
     setTeamModal("edit");
   };
 
-  if (!isManager) {
-    return (
-      <div className="p-6">
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Shield className="w-10 h-10 mx-auto mb-3 text-muted-foreground/50" />
-            <p className="text-muted-foreground">팀 설정은 부책임센터장 이상만 접근 가능합니다.</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  // 트레이너는 팀 목록 읽기 전용으로 볼 수 있음
 
   return (
     <div className="p-6 space-y-6">

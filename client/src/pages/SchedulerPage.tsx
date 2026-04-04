@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { Star, StarOff } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -206,6 +207,10 @@ export default function SchedulerPage() {
   const [form, setForm] = useState<BlockFormState>(DEFAULT_FORM);
   const [dragOver, setDragOver] = useState<{ date: string; hour: number } | null>(null);
   const [draggingTodo, setDraggingTodo] = useState<any>(null);
+  const [draggingFav, setDraggingFav] = useState<any>(null);
+  const [leftTab, setLeftTab] = useState<"todo" | "fav">("todo");
+  const [showAddFav, setShowAddFav] = useState(false);
+  const [favForm, setFavForm] = useState({ title: "", blockType: "free", durationMinutes: 60, color: "", note: "" });
   const [showTemplatePanel, setShowTemplatePanel] = useState(false);
   const [showAutoScheduleDialog, setShowAutoScheduleDialog] = useState(false);
   const [autoScheduleConfig, setAutoScheduleConfig] = useState({
@@ -222,6 +227,19 @@ export default function SchedulerPage() {
 
   const { data: blocks = [], refetch } = trpc.schedule.blocks.useQuery({ startDate, endDate });
   const { data: todos = [] } = trpc.todo.list.useQuery({ status: "pending" } as any);
+  const { data: favBlocks = [], refetch: refetchFav } = trpc.schedule.favoriteBlocks.useQuery();
+  const saveFavMutation = trpc.schedule.saveFavoriteBlock.useMutation({
+    onSuccess: () => { refetchFav(); setShowAddFav(false); setFavForm({ title: "", blockType: "free", durationMinutes: 60, color: "", note: "" }); toast.success("즐겨찾기 블럭이 저장되었습니다."); },
+    onError: (e) => toast.error(e.message),
+  });
+  const deleteFavMutation = trpc.schedule.deleteFavoriteBlock.useMutation({
+    onSuccess: () => { refetchFav(); toast.success("삭제되었습니다."); },
+    onError: (e) => toast.error(e.message),
+  });
+  const dropFavMutation = trpc.schedule.dropFavoriteBlock.useMutation({
+    onSuccess: () => { refetch(); toast.success("블럭이 추가되었습니다."); },
+    onError: (e) => toast.error(e.message),
+  });
 
   const createMutation = trpc.schedule.createBlock.useMutation({
     onSuccess: () => { refetch(); toast.success("블럭이 추가되었습니다."); setShowDialog(false); },
@@ -275,9 +293,13 @@ export default function SchedulerPage() {
   }
 
   function handleDropOnCell(date: string, hour: number) {
-    if (!draggingTodo) return;
-    createMutation.mutate({ title: draggingTodo.title, blockType: "todo", todoId: draggingTodo.id, date, startTime: minutesToTime(hour * 60), endTime: minutesToTime(hour * 60 + 60), durationMinutes: 60 });
-    setDraggingTodo(null);
+    if (draggingTodo) {
+      createMutation.mutate({ title: draggingTodo.title, blockType: "todo", todoId: draggingTodo.id, date, startTime: minutesToTime(hour * 60), endTime: minutesToTime(hour * 60 + 60), durationMinutes: 60 });
+      setDraggingTodo(null);
+    } else if (draggingFav) {
+      dropFavMutation.mutate({ favoriteId: draggingFav.id, date, startTime: minutesToTime(hour * 60) });
+      setDraggingFav(null);
+    }
     setDragOver(null);
   }
 
@@ -295,31 +317,94 @@ export default function SchedulerPage() {
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* Left: Todo list for drag */}
-      <div className="w-48 flex-shrink-0 border-r border-border flex flex-col bg-card/50">
-        <div className="p-3 border-b border-border">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">TO-DO 드래그</p>
-          <p className="text-xs text-muted-foreground mt-0.5">드래그하여 스케줄에 삽입</p>
+      {/* Left: TO-DO / 즐겨찾기 탭 패널 */}
+      <div className="w-52 flex-shrink-0 border-r border-border flex flex-col bg-card/50">
+        {/* 탭 헤더 */}
+        <div className="flex border-b border-border">
+          <button
+            onClick={() => setLeftTab("todo")}
+            className={cn("flex-1 py-2 text-xs font-semibold transition-colors", leftTab === "todo" ? "text-foreground border-b-2 border-primary" : "text-muted-foreground hover:text-foreground")}
+          >TO-DO</button>
+          <button
+            onClick={() => setLeftTab("fav")}
+            className={cn("flex-1 py-2 text-xs font-semibold transition-colors flex items-center justify-center gap-1", leftTab === "fav" ? "text-foreground border-b-2 border-primary" : "text-muted-foreground hover:text-foreground")}
+          ><Star className="h-3 w-3" />즐겨찾기</button>
         </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {(todos as any[]).length === 0 && (
-            <p className="text-xs text-muted-foreground text-center py-4">대기 중인 TO-DO 없음</p>
-          )}
-          {(todos as any[]).map((todo: any) => (
-            <div
-              key={todo.id}
-              draggable
-              onDragStart={() => setDraggingTodo(todo)}
-              onDragEnd={() => setDraggingTodo(null)}
-              className="p-2 rounded-md bg-blue-500/10 border border-blue-500/20 cursor-grab active:cursor-grabbing hover:bg-blue-500/20 transition-colors"
-            >
-              <p className="text-xs font-medium text-foreground truncate">{todo.title}</p>
-              {todo.estimatedMinutes && (
-                <p className="text-xs text-muted-foreground mt-0.5">{(todo.estimatedMinutes / 60).toFixed(1)}h</p>
+        {leftTab === "todo" && (
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            <p className="text-xs text-muted-foreground px-1 py-1">드래그하여 스케줄에 삽입</p>
+            {(todos as any[]).length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-4">대기 중인 TO-DO 없음</p>
+            )}
+            {(todos as any[]).map((todo: any) => (
+              <div
+                key={todo.id}
+                draggable
+                onDragStart={() => { setDraggingTodo(todo); setDraggingFav(null); }}
+                onDragEnd={() => setDraggingTodo(null)}
+                className="p-2 rounded-md bg-blue-500/10 border border-blue-500/20 cursor-grab active:cursor-grabbing hover:bg-blue-500/20 transition-colors"
+              >
+                <p className="text-xs font-medium text-foreground truncate">{todo.title}</p>
+                {todo.estimatedMinutes && (
+                  <p className="text-xs text-muted-foreground mt-0.5">{(todo.estimatedMinutes / 60).toFixed(1)}h</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {leftTab === "fav" && (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              <p className="text-xs text-muted-foreground px-1 py-1">드래그하여 스케줄에 삽입</p>
+              {(favBlocks as any[]).length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-4">즐겨찾기 블럭 없음<br/>아래 버튼으로 추가</p>
+              )}
+              {(favBlocks as any[]).map((fav: any) => (
+                <div
+                  key={fav.id}
+                  draggable
+                  onDragStart={() => { setDraggingFav(fav); setDraggingTodo(null); }}
+                  onDragEnd={() => setDraggingFav(null)}
+                  className={cn("p-2 rounded-md border cursor-grab active:cursor-grabbing hover:opacity-80 transition-opacity group relative", BLOCK_TYPE_CONFIG[fav.blockType]?.color ?? "bg-gray-500/10 border-gray-500/20")}
+                >
+                  <p className="text-xs font-medium text-white truncate">{fav.title}</p>
+                  <p className="text-xs text-white/70">{Math.floor(fav.durationMinutes / 60)}h{fav.durationMinutes % 60 > 0 ? `${fav.durationMinutes % 60}m` : ""}</p>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteFavMutation.mutate({ id: fav.id }); }}
+                    className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 text-white/70 hover:text-white"
+                  ><StarOff className="h-3 w-3" /></button>
+                </div>
+              ))}
+            </div>
+            <div className="p-2 border-t border-border">
+              {!showAddFav ? (
+                <Button size="sm" variant="outline" className="w-full text-xs h-7 gap-1" onClick={() => setShowAddFav(true)}>
+                  <Plus className="h-3 w-3" />블럭 저장
+                </Button>
+              ) : (
+                <div className="space-y-1.5">
+                  <Input value={favForm.title} onChange={e => setFavForm(f => ({ ...f, title: e.target.value }))} placeholder="블럭 제목" className="h-7 text-xs" />
+                  <Select value={favForm.blockType} onValueChange={v => setFavForm(f => ({ ...f, blockType: v }))}>
+                    <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(BLOCK_TYPE_CONFIG).filter(([k]) => k !== "template").map(([k, v]) => (
+                        <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex items-center gap-1">
+                    <Input type="number" min={15} max={480} step={15} value={favForm.durationMinutes} onChange={e => setFavForm(f => ({ ...f, durationMinutes: Number(e.target.value) }))} className="h-7 text-xs w-16" />
+                    <span className="text-xs text-muted-foreground">분</span>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="outline" className="flex-1 h-7 text-xs" onClick={() => setShowAddFav(false)}>취소</Button>
+                    <Button size="sm" className="flex-1 h-7 text-xs" onClick={() => { if (!favForm.title.trim()) { toast.error("제목을 입력해주세요."); return; } saveFavMutation.mutate({ title: favForm.title, blockType: favForm.blockType as any, durationMinutes: favForm.durationMinutes }); }} disabled={saveFavMutation.isPending}>저장</Button>
+                  </div>
+                </div>
               )}
             </div>
-          ))}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Center: Week grid */}

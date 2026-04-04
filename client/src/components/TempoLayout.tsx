@@ -21,6 +21,7 @@ import {
   ClipboardCheck,
   MessageSquare,
   Settings,
+  Settings2,
   ChevronLeft,
   ChevronRight,
   Bell,
@@ -43,6 +44,7 @@ const NAV_ITEMS = [
   { href: "/interviews", icon: MessageSquare, label: "면담 기록", roles: ["owner", "center_manager", "sub_manager", "trainer"] },
   { href: "/team-schedule", icon: CalendarDays, label: "팀 스케줄", roles: ["owner", "center_manager", "sub_manager", "trainer"] },
   { href: "/team-settings", icon: Users, label: "팀 설정", roles: ["owner", "center_manager", "sub_manager"] },
+  { href: "/system-settings", icon: Settings2, label: "시스템 설정", roles: ["owner", "center_manager"] },
   { href: "/admin-settings", icon: Settings, label: "어드민 연동", roles: ["owner", "center_manager"] },
 ];
 

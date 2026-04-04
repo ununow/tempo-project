@@ -15,6 +15,7 @@ import ApprovalsPage from "./pages/ApprovalsPage";
 import InterviewPage from "./pages/InterviewPage";
 import TeamSettingsPage from "./pages/TeamSettingsPage";
 import TeamSchedulePage from "./pages/TeamSchedulePage";
+import SystemSettingsPage from "./pages/SystemSettingsPage";
 import TempoLayout from "./components/TempoLayout";
 import { useAuth } from "./_core/hooks/useAuth";
 import { getLoginUrl } from "./const";
@@ -103,6 +104,13 @@ function Router() {
         {() => (
           <ProtectedLayout>
             <TeamSettingsPage />
+          </ProtectedLayout>
+        )}
+      </Route>
+      <Route path="/system-settings">
+        {() => (
+          <ProtectedLayout>
+            <SystemSettingsPage />
           </ProtectedLayout>
         )}
       </Route>

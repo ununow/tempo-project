@@ -315,3 +315,16 @@ export type WeeklyReport = typeof weeklyReports.$inferSelect;
 export type ApprovalRequest = typeof approvalRequests.$inferSelect;
 export type MemberInterview = typeof memberInterviews.$inferSelect;
 export type AdminCache = typeof adminCache.$inferSelect;
+
+// ─── Favorite Blocks (즐겨찾기 블럭 패턴) ─────────────────────────────────────
+export const favoriteBlocks = mysqlTable("favorite_blocks", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  title: varchar("title", { length: 200 }).notNull(),
+  blockType: mysqlEnum("blockType", ["todo", "free", "team_task", "private"]).default("free").notNull(),
+  durationMinutes: int("durationMinutes").notNull().default(60),
+  color: varchar("color", { length: 20 }),
+  note: text("note"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type FavoriteBlock = typeof favoriteBlocks.$inferSelect;

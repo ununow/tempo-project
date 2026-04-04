@@ -76,3 +76,14 @@
 
 ## 3차 수정
 - [x] 앱 이름/설명 전체를 "비즈니스PT 레드센터 통합 운영 플랫폼"으로 수정 완료 (index.html, TempoLayout, Home.tsx 푸터 모두 적용)
+
+## 4차 개발 - 인과관계 수정 및 기능 강화
+- [x] 시스템 설정 페이지 신규 생성: 시스템 구조 안내, 직급별 권한 표, 아이디별 직급 관리 (SystemSettingsPage 완료)
+- [x] 팀 설정 페이지 인과 수정: 트레이너도 팀 목록 조회 가능, 부책임이상 팀 생성/편집, 팀원 추가 시 Tempo 가입 사용자 목록에서 선택 (userManagement.list 권한 확장)
+- [x] 스케줄러 즐겨찾기 블럭 드래그앤드랍: TO-DO/즐겨찾기 탭 분리, 즐겨찾기 저장/삭제/드래그 완료 (favorite_blocks DB + dropFavoriteBlock 프로시저)
+- [x] TempoLayout 사이드바에 시스템 설정 메뉴 추가 (대표/책임센터장 전용)
+- [x] 사이트맵 문서 작성 완료 (SystemSettingsPage 내 권한 매트릭스 + 시스템 구조 안내 포함)
+
+## 4차 개발 - 검증 보완
+- [x] SystemSettingsPage 아이디별 직급 관리: trpc.userManagement.list + setRole 뮤테이션 연결 확인 (line 303, 308)
+- [x] 사이트맵: SystemSettingsPage 내 PERMISSION_MATRIX 상수로 기능별 역할 접근 권한 문서화 (코드 내 인라인 사이트맵)

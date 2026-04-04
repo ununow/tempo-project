@@ -293,6 +293,44 @@ export const appRouter = router({
     deleteTemplate: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(({ input }) => db.deleteScheduleTemplate(input.id)),
+    // ─── 즐겨찾기 블럭 (자주 쓰는 블럭 패턴 저장) ─────────────────────────
+    favoriteBlocks: protectedProcedure.query(({ ctx }) => db.getFavoriteBlocks(ctx.user.id)),
+    saveFavoriteBlock: protectedProcedure
+      .input(z.object({
+        title: z.string().min(1),
+        blockType: z.enum(["todo", "free", "team_task", "private"]),
+        durationMinutes: z.number().min(15).max(480),
+        color: z.string().optional(),
+        note: z.string().optional(),
+      }))
+      .mutation(({ input, ctx }) => db.createFavoriteBlock({ ...input, userId: ctx.user.id })),
+    deleteFavoriteBlock: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(({ input, ctx }) => db.deleteFavoriteBlock(input.id, ctx.user.id)),
+    dropFavoriteBlock: protectedProcedure
+      .input(z.object({
+        favoriteId: z.number(),
+        date: z.string(),
+        startTime: z.string(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const fav = await db.getFavoriteBlockById(input.favoriteId, ctx.user.id);
+        if (!fav) throw new TRPCError({ code: "NOT_FOUND" });
+        const [h, m] = input.startTime.split(":").map(Number);
+        const endMin = h * 60 + m + fav.durationMinutes;
+        const endTime = `${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
+        return db.createScheduleBlock({
+          userId: ctx.user.id,
+          title: fav.title,
+          blockType: fav.blockType as any,
+          date: input.date as any,
+          startTime: input.startTime,
+          endTime,
+          durationMinutes: fav.durationMinutes,
+          color: fav.color ?? undefined,
+          note: fav.note ?? undefined,
+        });
+      }),
     // ─── 자동 스케줄링 (Motion/Sunsama 스타일) ─────────────────────────────
     autoSchedule: protectedProcedure
       .input(z.object({
@@ -577,11 +615,15 @@ export const appRouter = router({
     list: protectedProcedure.query(async ({ ctx }) => {
       const role = ctx.user.tempoRole ?? "trainer";
       if (["owner", "center_manager"].includes(role)) {
-        return db.getAllTeams();
+        return db.getTeamsWithMembers();
       } else if (role === "sub_manager") {
-        return db.getTeamsByManager(ctx.user.id);
+        const myTeams = await db.getTeamsByManager(ctx.user.id);
+        const ids = myTeams.map(t => t.id);
+        return db.getTeamsWithMembers(ids);
       }
-      return db.getTeamsByMember(ctx.user.id);
+      const myTeams = await db.getTeamsByMember(ctx.user.id);
+      const ids = myTeams.map(t => t.id);
+      return db.getTeamsWithMembers(ids);
     }),
     create: managerProcedure
       .input(z.object({ name: z.string().min(1), color: z.string().optional(), description: z.string().optional() }))
@@ -689,7 +731,7 @@ export const appRouter = router({
   }),
   // ─── 사용자 역할 관리 (책임센터장 전용) ────────────────────────────────────
   userManagement: router({
-    list: centerManagerProcedure.query(() => db.getAllUsers()),
+    list: managerProcedure.query(() => db.getAllUsers()),
     setRole: centerManagerProcedure
       .input(z.object({
         userId: z.number(),
