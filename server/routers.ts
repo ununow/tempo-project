@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getISOWeek, getISOWeekYear } from "date-fns";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -150,13 +151,7 @@ export const appRouter = router({
         id: z.number(),
         minutes: z.number().min(1),
       }))
-      .mutation(async ({ ctx, input }) => {
-        const todos = await db.getTodos(ctx.user.id, {});
-        const todo = (todos as any[]).find((t: any) => t.id === input.id);
-        if (!todo) throw new TRPCError({ code: "NOT_FOUND" });
-        const newActual = (todo.actualMinutes ?? 0) + input.minutes;
-        return db.updateTodo(input.id, ctx.user.id, { actualMinutes: newActual });
-      }),
+      .mutation(({ ctx, input }) => db.addActualMinutesAtomic(input.id, ctx.user.id, input.minutes)),
     // ─── 미완료 TODO 이월 ─────────────────────────────────────────────
     carryOver: protectedProcedure
       .input(z.object({
@@ -168,37 +163,14 @@ export const appRouter = router({
         const { todoIds, targetPeriodType, targetDate } = input;
         const now = new Date();
         const targetD = targetDate ? new Date(targetDate) : now;
-        const year = targetD.getFullYear();
         const month = targetD.getMonth() + 1;
-        // ISO week
-        const startOfYear = new Date(year, 0, 1);
-        const weekNum = Math.ceil(((targetD.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+        const weekNum = getISOWeek(targetD);
+        const year = getISOWeekYear(targetD);
 
-        const created = [];
-        for (const todoId of todoIds) {
-          const todos = await db.getTodos(ctx.user.id, {});
-          const original = (todos as any[]).find((t: any) => t.id === todoId);
-          if (!original) continue;
-          // 원본 TODO를 취소로 표시
-          await db.updateTodo(todoId, ctx.user.id, { status: "cancelled" });
-          // 새 TODO 생성 (이월된 표시)
-          const newTodo = await db.createTodo({
-            userId: ctx.user.id,
-            title: original.title,
-            description: original.description,
-            periodType: targetPeriodType,
-            year,
-            month: month,
-            week: targetPeriodType === "daily" || targetPeriodType === "weekly" ? weekNum : undefined,
-            estimatedMinutes: Math.max(0, (original.estimatedMinutes ?? 0) - (original.actualMinutes ?? 0)),
-            priority: original.priority,
-            category: original.category,
-            isCarriedOver: true,
-            originalDate: original.startDate ?? (targetDate ? new Date(targetDate) as any : undefined),
-          });
-          created.push(newTodo);
-        }
-        return { carried: created.length };
+        const allTodos = await db.getTodos(ctx.user.id, {});
+        return db.carryOverTodos(ctx.user.id, todoIds, allTodos as any[], {
+          targetPeriodType, year, month, weekNum, targetDate,
+        });
       }),
   }),
 
@@ -292,7 +264,7 @@ export const appRouter = router({
       }),
     deleteTemplate: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(({ input }) => db.deleteScheduleTemplate(input.id)),
+      .mutation(({ input, ctx }) => db.deleteScheduleTemplate(input.id, ctx.user.id)),
     // ─── 즐겨찾기 블럭 (자주 쓰는 블럭 패턴 저장) ─────────────────────────
     favoriteBlocks: protectedProcedure.query(({ ctx }) => db.getFavoriteBlocks(ctx.user.id)),
     saveFavoriteBlock: protectedProcedure
@@ -565,9 +537,9 @@ export const appRouter = router({
         result: z.enum(["positive", "neutral", "negative", "pending"]).optional(),
         nextInterviewDate: z.string().optional(),
       }))
-      .mutation(({ input }) => {
+      .mutation(({ input, ctx }) => {
         const { id, nextInterviewDate, ...rest } = input;
-        return db.updateMemberInterview(id, {
+        return db.updateMemberInterview(id, ctx.user.id, {
           ...rest,
           nextInterviewDate: nextInterviewDate ? new Date(nextInterviewDate) : undefined,
         });
@@ -576,7 +548,7 @@ export const appRouter = router({
 
   // ─── Admin Proxy ──────────────────────────────────────────────────────────
   admin: router({
-    login: protectedProcedure  // 모든 로그인 사용자가 어드민 연동 가능
+    login: centerManagerProcedure  // owner/center_manager만 어드민 연동 가능
       .input(z.object({ id: z.string(), password: z.string() }))
       .mutation(({ input }) => adminProxy.loginToAdmin(input.id, input.password)),
 
@@ -602,13 +574,37 @@ export const appRouter = router({
       }),
     memberPtSchedule: protectedProcedure
       .input(z.object({ uid: z.string().min(1) }))
-      .query(({ input }) => adminProxy.fetchMemberPtSchedule(input.uid)),
+      .query(async ({ input, ctx }) => {
+        const role = ctx.user.tempoRole ?? "trainer";
+        if (role === "trainer") {
+          const myMembers = await db.getTrainerMembers(ctx.user.id);
+          const allowed = myMembers.some(m => m.memberUid === input.uid);
+          if (!allowed) throw new TRPCError({ code: "FORBIDDEN", message: "본인 담당 회원만 조회할 수 있습니다." });
+        }
+        return adminProxy.fetchMemberPtSchedule(input.uid);
+      }),
     memberLectureProgress: protectedProcedure
       .input(z.object({ uid: z.string().min(1) }))
-      .query(({ input }) => adminProxy.fetchMemberLectureProgress(input.uid)),
+      .query(async ({ input, ctx }) => {
+        const role = ctx.user.tempoRole ?? "trainer";
+        if (role === "trainer") {
+          const myMembers = await db.getTrainerMembers(ctx.user.id);
+          const allowed = myMembers.some(m => m.memberUid === input.uid);
+          if (!allowed) throw new TRPCError({ code: "FORBIDDEN", message: "본인 담당 회원만 조회할 수 있습니다." });
+        }
+        return adminProxy.fetchMemberLectureProgress(input.uid);
+      }),
     memberThumbnailMaster: protectedProcedure
       .input(z.object({ uid: z.string().min(1) }))
-      .query(({ input }) => adminProxy.fetchMemberThumbnailMaster(input.uid)),
+      .query(async ({ input, ctx }) => {
+        const role = ctx.user.tempoRole ?? "trainer";
+        if (role === "trainer") {
+          const myMembers = await db.getTrainerMembers(ctx.user.id);
+          const allowed = myMembers.some(m => m.memberUid === input.uid);
+          if (!allowed) throw new TRPCError({ code: "FORBIDDEN", message: "본인 담당 회원만 조회할 수 있습니다." });
+        }
+        return adminProxy.fetchMemberThumbnailMaster(input.uid);
+      }),
   }),
   // ─── 팀 관리 (부책임센터장 이상) ──────────────────────────────────────────
   team: router({
@@ -724,10 +720,26 @@ export const appRouter = router({
         memo: z.string().optional(),
         isActive: z.boolean().optional(),
       }))
-      .mutation(({ input }) => db.updateTrainerMember(input)),
+      .mutation(async ({ input, ctx }) => {
+        const role = ctx.user.tempoRole ?? "trainer";
+        if (role === "trainer") {
+          const myMembers = await db.getTrainerMembers(ctx.user.id);
+          if (!myMembers.some(m => m.id === input.id))
+            throw new TRPCError({ code: "FORBIDDEN", message: "본인 담당 회원만 수정할 수 있습니다." });
+        }
+        return db.updateTrainerMember(input);
+      }),
     remove: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(({ input }) => db.removeTrainerMember(input.id)),
+      .mutation(async ({ input, ctx }) => {
+        const role = ctx.user.tempoRole ?? "trainer";
+        if (role === "trainer") {
+          const myMembers = await db.getTrainerMembers(ctx.user.id);
+          if (!myMembers.some(m => m.id === input.id))
+            throw new TRPCError({ code: "FORBIDDEN", message: "본인 담당 회원만 삭제할 수 있습니다." });
+        }
+        return db.removeTrainerMember(input.id);
+      }),
   }),
   // ─── 사용자 역할 관리 (책임센터장 전용) ────────────────────────────────────
   userManagement: router({

@@ -157,6 +157,55 @@ export async function updateTodo(id: number, userId: number, data: Partial<typeo
   await db.update(todos).set({ ...data, updatedAt: new Date() }).where(and(eq(todos.id, id), eq(todos.userId, userId)));
 }
 
+export async function addActualMinutesAtomic(todoId: number, userId: number, minutes: number) {
+  const database = await getDb();
+  if (!database) throw new Error("DB not available");
+  const result = await database.update(todos)
+    .set({ actualMinutes: sql`COALESCE(${todos.actualMinutes}, 0) + ${minutes}`, updatedAt: new Date() })
+    .where(and(eq(todos.id, todoId), eq(todos.userId, userId)));
+  if (!result[0] || (result[0] as any).affectedRows === 0)
+    throw new Error("TODO를 찾을 수 없습니다.");
+  return result;
+}
+
+export async function carryOverTodos(
+  userId: number,
+  todoIds: number[],
+  allTodos: any[],
+  opts: {
+    targetPeriodType: "daily" | "weekly" | "monthly";
+    year: number; month: number; weekNum: number; targetDate?: string;
+  }
+) {
+  const database = await getDb();
+  if (!database) throw new Error("DB not available");
+  return database.transaction(async (tx) => {
+    const created = [];
+    for (const todoId of todoIds) {
+      const original = allTodos.find((t: any) => t.id === todoId);
+      if (!original) continue;
+      await tx.update(todos).set({ status: "cancelled", updatedAt: new Date() })
+        .where(and(eq(todos.id, todoId), eq(todos.userId, userId)));
+      const newTodo = await tx.insert(todos).values({
+        userId,
+        title: original.title,
+        description: original.description,
+        periodType: opts.targetPeriodType,
+        year: opts.year,
+        month: opts.month,
+        week: opts.targetPeriodType === "daily" || opts.targetPeriodType === "weekly" ? opts.weekNum : undefined,
+        estimatedMinutes: Math.max(0, (original.estimatedMinutes ?? 0) - (original.actualMinutes ?? 0)),
+        priority: original.priority,
+        category: original.category,
+        isCarriedOver: true,
+        originalDate: original.startDate ?? (opts.targetDate ? new Date(opts.targetDate) as any : undefined),
+      });
+      created.push(newTodo);
+    }
+    return { carried: created.length };
+  });
+}
+
 export async function deleteTodo(id: number, userId: number) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
@@ -218,10 +267,10 @@ export async function getScheduleTemplates(userId: number) {
   ).orderBy(asc(scheduleTemplates.dayOfWeek), asc(scheduleTemplates.startTime));
 }
 
-export async function deleteScheduleTemplate(id: number) {
+export async function deleteScheduleTemplate(id: number, userId: number) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  await db.delete(scheduleTemplates).where(eq(scheduleTemplates.id, id));
+  await db.delete(scheduleTemplates).where(and(eq(scheduleTemplates.id, id), eq(scheduleTemplates.userId, userId)));
   return { success: true };
 }
 
@@ -319,10 +368,10 @@ export async function createMemberInterview(data: typeof memberInterviews.$infer
   return result[0];
 }
 
-export async function updateMemberInterview(id: number, data: Partial<typeof memberInterviews.$inferInsert>) {
+export async function updateMemberInterview(id: number, trainerId: number, data: Partial<typeof memberInterviews.$inferInsert>) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  await db.update(memberInterviews).set({ ...data, updatedAt: new Date() }).where(eq(memberInterviews.id, id));
+  await db.update(memberInterviews).set({ ...data, updatedAt: new Date() }).where(and(eq(memberInterviews.id, id), eq(memberInterviews.trainerId, trainerId)));
 }
 
 // ─── Admin Cache ──────────────────────────────────────────────────────────────
