@@ -34,6 +34,7 @@ export const users = mysqlTable("users", {
   phone: varchar("phone", { length: 20 }),
   avatarUrl: text("avatarUrl"),
   isActive: boolean("isActive").default(true).notNull(),
+  onboardingDone: boolean("onboardingDone").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -43,6 +44,7 @@ export const users = mysqlTable("users", {
 export const organizations = mysqlTable("organizations", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 100 }).notNull(),
+  tenantCode: varchar("tenantCode", { length: 20 }).unique(),
   type: mysqlEnum("type", ["company", "center", "team", "tf"]).notNull(),
   parentId: int("parentId"),  // 상위 조직 ID
   managerId: int("managerId"), // 담당자 user ID
@@ -116,6 +118,7 @@ export const todos = mysqlTable("todos", {
   category: varchar("category", { length: 50 }),
   // 조직 배정 (관리자가 팀원에게 배정)
   assignedBy: int("assignedBy"),
+  assignedTo: int("assignedTo"),
   organizationId: int("organizationId"), // 팀/센터 업무인 경우
   isTeamTask: boolean("isTeamTask").default(false).notNull(),
   // 상위 TODO (월간 → 주간 연결)
@@ -123,6 +126,7 @@ export const todos = mysqlTable("todos", {
   completionRate: float("completionRate").default(0),
   // 이월 관련
   isCarriedOver: boolean("isCarriedOver").default(false).notNull(),
+  carryOverReason: varchar("carryOverReason", { length: 50 }),
   originalDate: date("originalDate"), // 원래 예정일 (이월된 경우)
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

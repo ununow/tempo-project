@@ -105,9 +105,16 @@ export const todoRouter = router({
       todoIds: z.array(z.number()),
       targetPeriodType: z.enum(["daily", "weekly", "monthly"]).default("daily"),
       targetDate: z.string().optional(),
+      carryOverReason: z.enum([
+        "other_urgent",
+        "underestimated",
+        "condition",
+        "external",
+        "postponed",
+      ]).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { todoIds, targetPeriodType, targetDate } = input;
+      const { todoIds, targetPeriodType, targetDate, carryOverReason } = input;
       const now = new Date();
       const targetD = targetDate ? new Date(targetDate) : now;
       const month = targetD.getMonth() + 1;
@@ -116,7 +123,7 @@ export const todoRouter = router({
 
       const allTodos = await db.getTodos(ctx.user.id, {});
       return db.carryOverTodos(ctx.user.id, todoIds, allTodos as any[], {
-        targetPeriodType, year, month, weekNum, targetDate,
+        targetPeriodType, year, month, weekNum, targetDate, carryOverReason,
       });
     }),
 });

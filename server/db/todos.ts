@@ -24,7 +24,7 @@ export async function getTodos(userId: number, filters: {
 }) {
   const db = await getDb();
   if (!db) return [];
-  const conditions = [eq(todos.userId, userId)];
+  const conditions = [or(eq(todos.userId, userId), eq(todos.assignedTo, userId))];
   if (filters.periodType) conditions.push(eq(todos.periodType, filters.periodType as any));
   if (filters.year) conditions.push(eq(todos.year, filters.year));
   if (filters.month) conditions.push(eq(todos.month, filters.month));
@@ -64,6 +64,7 @@ export async function carryOverTodos(
   opts: {
     targetPeriodType: "daily" | "weekly" | "monthly";
     year: number; month: number; weekNum: number; targetDate?: string;
+    carryOverReason?: string;
   }
 ) {
   const database = await getDb();
@@ -87,6 +88,7 @@ export async function carryOverTodos(
         priority: original.priority,
         category: original.category,
         isCarriedOver: true,
+        carryOverReason: opts.carryOverReason as any ?? null,
         originalDate: original.startDate ?? (opts.targetDate ? new Date(opts.targetDate) as any : undefined),
       });
       created.push(newTodo);

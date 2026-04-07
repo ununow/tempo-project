@@ -93,6 +93,12 @@ export async function getAllUsers() {
   }).from(users);
 }
 
+export async function setOnboardingDone(userId: number) {
+  const database = await getDb();
+  if (!database) return;
+  await database.update(users).set({ onboardingDone: true }).where(eq(users.id, userId));
+}
+
 export async function setUserTempoRole(userId: number, tempoRole: string) {
   const database = await getDb();
   if (!database) return null;

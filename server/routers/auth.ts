@@ -26,4 +26,9 @@ export const authRouter = router({
       await db.updateUserProfile(ctx.user.id, input);
       return { success: true };
     }),
+  setOnboardingDone: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      await db.setOnboardingDone(ctx.user.id);
+      return { success: true };
+    }),
 });
