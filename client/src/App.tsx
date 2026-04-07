@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
@@ -50,12 +50,16 @@ function ProtectedLayout({ children }: { children: React.ReactNode }) {
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   const { data: me, isLoading } = trpc.auth.me.useQuery();
-  const [dismissed, setDismissed] = useState(() => {
-    return localStorage.getItem("tempo_onboarding_dismissed") === "1";
-  });
-  const [ownerSetupDone, setOwnerSetupDone] = useState(() => {
-    return localStorage.getItem("tempo_owner_setup_done") === "1";
-  });
+  const [dismissed, setDismissed] = useState(false);
+  const [ownerSetupDone, setOwnerSetupDone] = useState(false);
+  const setOnboardingDone = trpc.auth.setOnboardingDone.useMutation();
+
+  useEffect(() => {
+    if ((me as any)?.onboardingDone) {
+      setDismissed(true);
+      setOwnerSetupDone(true);
+    }
+  }, [me]);
 
   if (isLoading) return (
     <div className="min-h-screen flex items-center justify-center bg-background">
@@ -113,13 +117,13 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
 
           <div className="flex flex-col gap-2">
             <button
-              onClick={() => { localStorage.setItem("tempo_owner_setup_done", "1"); setOwnerSetupDone(true); window.location.href = "/invite"; }}
+              onClick={() => { setOnboardingDone.mutate(); setOwnerSetupDone(true); window.location.href = "/invite"; }}
               className="inline-flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
             >
               <Users className="w-4 h-4" /> 팀원 초대하러 가기
             </button>
             <button
-              onClick={() => { localStorage.setItem("tempo_owner_setup_done", "1"); setOwnerSetupDone(true); }}
+              onClick={() => { setOnboardingDone.mutate(); setOwnerSetupDone(true); }}
               className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-card border border-border text-foreground rounded-lg text-sm hover:bg-accent transition-colors"
             >
               <Settings className="w-4 h-4" /> 나중에 설정하기
@@ -162,7 +166,7 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <button
-            onClick={() => { localStorage.setItem("tempo_onboarding_dismissed", "1"); setDismissed(true); }}
+            onClick={() => { setOnboardingDone.mutate(); setDismissed(true); }}
             className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
           >
             트레이너로 시작하기 <ArrowRight className="w-4 h-4" />

@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BarChart2, TrendingUp, TrendingDown, Minus, Clock, CheckSquare, Target, Zap } from "lucide-react";
+import { BarChart2, TrendingUp, TrendingDown, Minus, Clock, CheckSquare, Target, Zap, AlertCircle } from "lucide-react";
 
 const PERIOD_OPTIONS = [
   { value: "week", label: "이번 주" },
@@ -54,11 +54,17 @@ export default function GrowthReportPage() {
     urgent: "text-red-400", high: "text-orange-400", medium: "text-yellow-400", low: "text-blue-400"
   };
 
-  // 업무 유형별 그룹화 (Learning Curve)
+  // 업무 유형별 그룹화 (Learning Curve) — category 필드 기반
+  const CATEGORY_LABELS: Record<string, string> = {
+    pt_lesson: "PT 수업", member_mgmt: "회원 관리", education: "교육",
+    marketing: "마케팅", admin_work: "행정 업무", report: "보고/문서",
+    meeting: "회의", other: "기타",
+  };
   const byType: Record<string, { title: string; estimated: number; actual: number; count: number }> = {};
   for (const t of todosWithTime) {
-    const key = (t.title as string).slice(0, 4).trim();
-    if (!byType[key]) byType[key] = { title: key, estimated: 0, actual: 0, count: 0 };
+    const key = (t as any).category || "other";
+    const label = CATEGORY_LABELS[key] || key;
+    if (!byType[key]) byType[key] = { title: label, estimated: 0, actual: 0, count: 0 };
     byType[key].estimated += t.estimatedHours as number;
     byType[key].actual += t.actualHours as number;
     byType[key].count += 1;
@@ -237,11 +243,60 @@ export default function GrowthReportPage() {
                   </div>
                 );
               })}
-              <p className="text-xs text-muted-foreground pt-2">* 업무 제목 앞 4글자 기준으로 유형을 자동 분류합니다. 더 정확한 분석을 위해 유사 업무는 동일한 단어로 시작하도록 TO-DO 제목을 작성하세요.</p>
+              <p className="text-xs text-muted-foreground pt-2">* TODO 생성 시 선택한 카테고리 기준으로 분류합니다.</p>
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* 이월 사유 분석 */}
+      {(() => {
+        const REASON_LABELS: Record<string, string> = {
+          other_urgent: "타 업무 긴급",
+          underestimated: "예상시간 부족",
+          condition: "컨디션 난조",
+          external: "외부 요인",
+          postponed: "단순 미룸",
+        };
+        const carriedTodos = (todos as any[])?.filter(t => t.isCarriedOver && t.carryOverReason) ?? [];
+        const reasonCounts: Record<string, number> = {};
+        for (const t of carriedTodos) {
+          const r = t.carryOverReason;
+          reasonCounts[r] = (reasonCounts[r] || 0) + 1;
+        }
+        const reasonEntries = Object.entries(reasonCounts).sort((a, b) => b[1] - a[1]);
+        const totalCarried = carriedTodos.length;
+        if (totalCarried === 0) return null;
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-400" />
+                이월 사유 분석
+              </CardTitle>
+              <CardDescription>왜 일정이 밀렸는가? (총 {totalCarried}건 이월)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {reasonEntries.map(([reason, count]) => {
+                  const pct = Math.round((count / totalCarried) * 100);
+                  return (
+                    <div key={reason}>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span>{REASON_LABELS[reason] ?? reason}</span>
+                        <span className="text-muted-foreground">{count}건 ({pct}%)</span>
+                      </div>
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div className="h-full bg-amber-400 rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
     </div>
   );
 }

@@ -28,6 +28,26 @@ const PRIORITY_COLORS: Record<string, string> = {
   low: "text-green-400 border-green-400/30 bg-green-400/10",
 };
 const STATUS_LABELS: Record<string, string> = { pending: "대기", in_progress: "진행중", done: "완료", cancelled: "취소" };
+const CATEGORY_LABELS: Record<string, string> = {
+  pt_lesson: "PT 수업",
+  member_mgmt: "회원 관리",
+  education: "교육",
+  marketing: "마케팅",
+  admin_work: "행정 업무",
+  report: "보고/문서",
+  meeting: "회의",
+  other: "기타",
+};
+const CATEGORY_COLORS: Record<string, string> = {
+  pt_lesson: "text-blue-400 border-blue-400/30 bg-blue-400/10",
+  member_mgmt: "text-green-400 border-green-400/30 bg-green-400/10",
+  education: "text-purple-400 border-purple-400/30 bg-purple-400/10",
+  marketing: "text-pink-400 border-pink-400/30 bg-pink-400/10",
+  admin_work: "text-gray-400 border-gray-400/30 bg-gray-400/10",
+  report: "text-amber-400 border-amber-400/30 bg-amber-400/10",
+  meeting: "text-cyan-400 border-cyan-400/30 bg-cyan-400/10",
+  other: "text-slate-400 border-slate-400/30 bg-slate-400/10",
+};
 const PERIOD_LABELS: Record<string, string> = {
   monthly: "월간", weekly: "주간", daily: "일일",
   quarter: "분기", half_year: "반기", annual: "연간", custom: "지정"
@@ -230,7 +250,11 @@ function TodoCard({
             </Badge>
             <Badge variant="secondary" className="text-xs">{STATUS_LABELS[todo.status]}</Badge>
             {todo.week && <Badge variant="outline" className="text-xs">{todo.week}주차</Badge>}
-            {todo.category && <Badge variant="outline" className="text-xs text-primary/70">{todo.category}</Badge>}
+            {todo.category && (
+              <Badge variant="outline" className={cn("text-xs", CATEGORY_COLORS[todo.category] ?? "text-primary/70")}>
+                {CATEGORY_LABELS[todo.category] ?? todo.category}
+              </Badge>
+            )}
             {isCarriedOver && (
               <Badge variant="outline" className="text-xs text-amber-400 border-amber-400/30 bg-amber-400/10">
                 <RotateCcw className="w-2.5 h-2.5 mr-0.5" />이월
@@ -315,6 +339,7 @@ function CarryOverModal({
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [targetType, setTargetType] = useState<"daily" | "weekly" | "monthly">("daily");
   const [targetDate, setTargetDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [carryOverReason, setCarryOverReason] = useState("");
 
   const carryOverMutation = trpc.todo.carryOver.useMutation({
     onSuccess: (d) => {
@@ -407,6 +432,21 @@ function CarryOverModal({
               />
             </div>
           </div>
+          <div className="mt-3">
+            <Label className="text-xs">이월 사유</Label>
+            <Select value={carryOverReason} onValueChange={setCarryOverReason}>
+              <SelectTrigger className="mt-1 h-8 text-xs">
+                <SelectValue placeholder="사유를 선택해주세요" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="other_urgent">타 업무 긴급</SelectItem>
+                <SelectItem value="underestimated">예상시간 부족</SelectItem>
+                <SelectItem value="condition">컨디션 난조</SelectItem>
+                <SelectItem value="external">외부 요인 (회의/교육 등)</SelectItem>
+                <SelectItem value="postponed">단순 미룸</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <DialogFooter className="gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>취소</Button>
@@ -418,6 +458,7 @@ function CarryOverModal({
                 todoIds: Array.from(selected),
                 targetPeriodType: targetType,
                 targetDate,
+                carryOverReason: (carryOverReason as any) || undefined,
               });
             }}
             disabled={carryOverMutation.isPending || selected.size === 0}
@@ -712,8 +753,21 @@ export default function TodoPage() {
             )}
             <div className="space-y-1.5">
               <Label>카테고리</Label>
-              <Input placeholder="예: 회원관리, 보고, 교육 등" value={form.category}
-                onChange={(e) => setForm(f => ({ ...f, category: e.target.value }))} />
+              <Select value={form.category} onValueChange={(v) => setForm(f => ({ ...f, category: v }))}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="카테고리 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pt_lesson">PT 수업</SelectItem>
+                  <SelectItem value="member_mgmt">회원 관리</SelectItem>
+                  <SelectItem value="education">교육</SelectItem>
+                  <SelectItem value="marketing">마케팅</SelectItem>
+                  <SelectItem value="admin_work">행정 업무</SelectItem>
+                  <SelectItem value="report">보고/문서</SelectItem>
+                  <SelectItem value="meeting">회의</SelectItem>
+                  <SelectItem value="other">기타</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>

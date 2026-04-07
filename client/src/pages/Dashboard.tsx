@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -70,15 +71,26 @@ export default function Dashboard() {
 
   const adminConnected = Array.isArray(adminTrainers) && adminTrainers.length > 0;
 
-  const weeklyData = [
-    { day: "월", members: 142, new: 3, cancel: 1 },
-    { day: "화", members: 144, new: 2, cancel: 0 },
-    { day: "수", members: 146, new: 4, cancel: 2 },
-    { day: "목", members: 148, new: 3, cancel: 1 },
-    { day: "금", members: 150, new: 5, cancel: 3 },
-    { day: "토", members: 152, new: 2, cancel: 0 },
-    { day: "일", members: 151, new: 1, cancel: 2 },
-  ];
+  const dayLabels = ["일", "월", "화", "수", "목", "금", "토"];
+  const weeklyData = useMemo(() => {
+    if (!todos) return dayLabels.map(day => ({ day, completed: 0, planned: 0 }));
+    const now = new Date();
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - now.getDay() + 1); // 월요일
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(weekStart);
+      d.setDate(weekStart.getDate() + i);
+      const dateStr = d.toISOString().split("T")[0];
+      const dayTodos = (todos as any[]).filter((t: any) =>
+        t.startDate === dateStr || t.endDate === dateStr
+      );
+      return {
+        day: dayLabels[(i + 1) % 7],
+        completed: dayTodos.filter((t: any) => t.status === "done").length,
+        planned: dayTodos.length,
+      };
+    });
+  }, [todos]);
 
   return (
     <div className="p-6 space-y-6">
@@ -115,9 +127,15 @@ export default function Dashboard() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <KpiCard title="트레이너 수" value={adminConnected ? (adminTrainers as any[]).length : "—"} icon={Users} trend="neutral" trendValue="연동됨" color="primary" />
-        <KpiCard title="오늘 신규" value={adminConnected ? "어드민 확인" : "—"} icon={UserPlus} trend="up" trendValue="어드민" color="green" />
-        <KpiCard title="오늘 탈퇴" value={adminConnected ? "어드민 확인" : "—"} icon={UserMinus} trend="neutral" trendValue="어드민" color="red" />
-        <KpiCard title="수익화" value={adminConnected ? "어드민 확인" : "—"} icon={DollarSign} trend="up" trendValue="어드민" color="amber" />
+        <KpiCard title="오늘 신규" value={adminConnected ? "어드민 확인" : "—"}
+          sub={!adminConnected ? "어드민 연동 필요" : undefined}
+          icon={UserPlus} trend="up" trendValue="어드민" color="green" />
+        <KpiCard title="오늘 탈퇴" value={adminConnected ? "어드민 확인" : "—"}
+          sub={!adminConnected ? "어드민 연동 필요" : undefined}
+          icon={UserMinus} trend="neutral" trendValue="어드민" color="red" />
+        <KpiCard title="수익화" value={adminConnected ? "어드민 확인" : "—"}
+          sub={!adminConnected ? "어드민 연동 필요" : undefined}
+          icon={DollarSign} trend="up" trendValue="어드민" color="amber" />
         <KpiCard title="TO-DO 달성률" value={`${completionRate}%`} sub={`${todoStats.done}/${todoStats.total} 완료`} icon={Target} trend={completionRate >= 70 ? "up" : "down"} trendValue="이번달" color="cyan" />
       </div>
 
@@ -125,8 +143,8 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-card border border-border rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-foreground">주간 회원 현황</h2>
-            <Badge variant="secondary" className="text-xs">최근 7일</Badge>
+            <h2 className="font-semibold text-foreground">주간 TODO 달성 현황</h2>
+            <Badge variant="secondary" className="text-xs">이번 주</Badge>
           </div>
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={weeklyData}>
@@ -135,12 +153,17 @@ export default function Dashboard() {
                   <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
                   <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                 </linearGradient>
+                <linearGradient id="completedGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
               <XAxis dataKey="day" tick={{ fontSize: 12, fill: "#888" }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 12, fill: "#888" }} axisLine={false} tickLine={false} />
               <Tooltip contentStyle={{ background: "#1a1b2e", border: "1px solid #2a2b3d", borderRadius: "8px", fontSize: "12px" }} />
-              <Area type="monotone" dataKey="members" stroke="#6366f1" fill="url(#memberGrad)" strokeWidth={2} name="전체 회원" />
+              <Area type="monotone" dataKey="planned" stroke="#6366f1" fill="url(#memberGrad)" strokeWidth={2} name="계획" />
+              <Area type="monotone" dataKey="completed" stroke="#22c55e" fill="url(#completedGrad)" strokeWidth={2} name="완료" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
