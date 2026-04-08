@@ -1,6 +1,6 @@
 import { eq, and, asc, desc, or, sql } from "drizzle-orm";
 import { todos, todoWeekSplits, organizations } from "../../drizzle/schema";
-import { getDb } from "./connection";
+import { getDb, tenantFilter } from "./connection";
 
 export async function getOrganizations() {
   const db = await getDb();
@@ -21,10 +21,13 @@ export async function getTodos(userId: number, filters: {
   month?: number;
   week?: number;
   status?: string;
+  organizationId?: number;
 }) {
   const db = await getDb();
   if (!db) return [];
-  const conditions = [or(eq(todos.userId, userId), eq(todos.assignedTo, userId))];
+  const conditions: any[] = [or(eq(todos.userId, userId), eq(todos.assignedTo, userId))];
+  const tf = tenantFilter(todos, filters.organizationId);
+  if (tf) conditions.push(tf);
   if (filters.periodType) conditions.push(eq(todos.periodType, filters.periodType as any));
   if (filters.year) conditions.push(eq(todos.year, filters.year));
   if (filters.month) conditions.push(eq(todos.month, filters.month));

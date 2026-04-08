@@ -1,17 +1,19 @@
 import { eq, and, gte, lte, asc, isNull, or, inArray } from "drizzle-orm";
 import { scheduleBlocks, scheduleTemplates, favoriteBlocks } from "../../drizzle/schema";
-import { getDb } from "./connection";
+import { getDb, tenantFilter } from "./connection";
 
-export async function getScheduleBlocks(userId: number, startDate: string, endDate: string) {
+export async function getScheduleBlocks(userId: number, startDate: string, endDate: string, organizationId?: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(scheduleBlocks).where(
-    and(
-      eq(scheduleBlocks.userId, userId),
-      gte(scheduleBlocks.date, startDate as any),
-      lte(scheduleBlocks.date, endDate as any)
-    )
-  ).orderBy(asc(scheduleBlocks.date), asc(scheduleBlocks.startTime));
+  const conditions: any[] = [
+    eq(scheduleBlocks.userId, userId),
+    gte(scheduleBlocks.date, startDate as any),
+    lte(scheduleBlocks.date, endDate as any),
+  ];
+  const tf = tenantFilter(scheduleBlocks, organizationId);
+  if (tf) conditions.push(tf);
+  return db.select().from(scheduleBlocks).where(and(...conditions))
+    .orderBy(asc(scheduleBlocks.date), asc(scheduleBlocks.startTime));
 }
 
 export async function createScheduleBlock(data: typeof scheduleBlocks.$inferInsert) {

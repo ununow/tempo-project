@@ -1,13 +1,14 @@
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { dailyReports, weeklyReports } from "../../drizzle/schema";
-import { getDb } from "./connection";
+import { getDb, tenantFilter } from "./connection";
 
-export async function getDailyReport(userId: number, reportDate: string) {
+export async function getDailyReport(userId: number, reportDate: string, organizationId?: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(dailyReports).where(
-    and(eq(dailyReports.userId, userId), eq(dailyReports.reportDate, reportDate as any))
-  ).limit(1);
+  const conditions: any[] = [eq(dailyReports.userId, userId), eq(dailyReports.reportDate, reportDate as any)];
+  const tf = tenantFilter(dailyReports, organizationId);
+  if (tf) conditions.push(tf);
+  const result = await db.select().from(dailyReports).where(and(...conditions)).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
 
@@ -19,24 +20,26 @@ export async function upsertDailyReport(data: typeof dailyReports.$inferInsert) 
   });
 }
 
-export async function getDailyReports(userId: number, startDate: string, endDate: string) {
+export async function getDailyReports(userId: number, startDate: string, endDate: string, organizationId?: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(dailyReports).where(
-    and(
-      eq(dailyReports.userId, userId),
-      gte(dailyReports.reportDate, startDate as any),
-      lte(dailyReports.reportDate, endDate as any)
-    )
-  ).orderBy(desc(dailyReports.reportDate));
+  const conditions: any[] = [
+    eq(dailyReports.userId, userId),
+    gte(dailyReports.reportDate, startDate as any),
+    lte(dailyReports.reportDate, endDate as any),
+  ];
+  const tf = tenantFilter(dailyReports, organizationId);
+  if (tf) conditions.push(tf);
+  return db.select().from(dailyReports).where(and(...conditions)).orderBy(desc(dailyReports.reportDate));
 }
 
-export async function getWeeklyReport(userId: number, year: number, week: number) {
+export async function getWeeklyReport(userId: number, year: number, week: number, organizationId?: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(weeklyReports).where(
-    and(eq(weeklyReports.userId, userId), eq(weeklyReports.year, year), eq(weeklyReports.week, week))
-  ).limit(1);
+  const conditions: any[] = [eq(weeklyReports.userId, userId), eq(weeklyReports.year, year), eq(weeklyReports.week, week)];
+  const tf = tenantFilter(weeklyReports, organizationId);
+  if (tf) conditions.push(tf);
+  const result = await db.select().from(weeklyReports).where(and(...conditions)).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
 

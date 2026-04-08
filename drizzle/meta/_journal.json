@@ -36,6 +36,13 @@
       "when": 1775311158824,
       "tag": "0004_loose_felicia_hardy",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1775557709885,
+      "tag": "0005_striped_quasimodo",
+      "breakpoints": true
     }
   ]
 }

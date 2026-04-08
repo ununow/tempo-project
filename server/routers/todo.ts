@@ -29,7 +29,10 @@ export const todoRouter = router({
       week: z.number().optional(),
       status: z.string().optional(),
     }))
-    .query(({ ctx, input }) => db.getTodos(ctx.user.id, input)),
+    .query(({ ctx, input }) => db.getTodos(ctx.user.id, {
+      ...input,
+      organizationId: (ctx.user as any).organizationId ?? undefined,
+    })),
 
   create: protectedProcedure
     .input(z.object({

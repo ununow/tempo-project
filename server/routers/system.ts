@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { router, protectedProcedure, managerProcedure, centerManagerProcedure } from "./middleware";
+import { router, protectedProcedure, managerProcedure, centerManagerProcedure, TRPCError } from "./middleware";
 import * as db from "../db";
 
 export const userManagementRouter = router({
-  list: managerProcedure.query(() => db.getAllUsers()),
+  list: managerProcedure.query(({ ctx }) => db.getAllUsers((ctx.user as any).organizationId ?? undefined)),
   setRole: centerManagerProcedure
     .input(z.object({
       userId: z.number(),
@@ -34,7 +34,17 @@ export const invitationRouter = router({
 });
 
 export const boardRouter = router({
-  list: protectedProcedure.query(() => db.getBoards()),
+  list: protectedProcedure.query(async ({ ctx }) => {
+    const boards = await db.getBoards();
+    const role = (ctx.user as any).tempoRole ?? "trainer";
+    return boards.filter(board => {
+      if (!(board as any).allowedRoles || (board as any).allowedRoles === "all") return true;
+      try {
+        const allowed = JSON.parse((board as any).allowedRoles);
+        return Array.isArray(allowed) ? allowed.includes(role) : true;
+      } catch { return true; }
+    });
+  }),
   create: managerProcedure
     .input(z.object({ name: z.string(), description: z.string().optional(), icon: z.string().optional() }))
     .mutation(({ input, ctx }) => db.createBoard({ ...input, createdBy: ctx.user.id })),
@@ -52,7 +62,21 @@ export const postRouter = router({
     .query(({ input }) => db.getPost(input.id)),
   create: protectedProcedure
     .input(z.object({ boardId: z.number(), title: z.string(), content: z.string() }))
-    .mutation(({ input, ctx }) => db.createPost({ ...input, authorId: ctx.user.id })),
+    .mutation(async ({ input, ctx }) => {
+      const boards = await db.getBoards();
+      const board = boards.find(b => b.id === input.boardId);
+      if (!board) throw new TRPCError({ code: "NOT_FOUND" });
+      const role = (ctx.user as any).tempoRole ?? "trainer";
+      if ((board as any).canWrite && (board as any).canWrite !== "all") {
+        try {
+          const canWrite = JSON.parse((board as any).canWrite);
+          if (Array.isArray(canWrite) && !canWrite.includes(role)) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "이 게시판에 글을 작성할 권한이 없습니다." });
+          }
+        } catch (e) { if (e instanceof TRPCError) throw e; }
+      }
+      return db.createPost({ ...input, authorId: ctx.user.id });
+    }),
   update: protectedProcedure
     .input(z.object({ id: z.number(), title: z.string().optional(), content: z.string().optional() }))
     .mutation(({ input, ctx }) => db.updatePost(input.id, ctx.user.id, input)),

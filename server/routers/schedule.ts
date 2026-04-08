@@ -5,7 +5,7 @@ import * as db from "../db";
 export const scheduleRouter = router({
   blocks: protectedProcedure
     .input(z.object({ startDate: z.string(), endDate: z.string() }))
-    .query(({ ctx, input }) => db.getScheduleBlocks(ctx.user.id, input.startDate, input.endDate)),
+    .query(({ ctx, input }) => db.getScheduleBlocks(ctx.user.id, input.startDate, input.endDate, ctx.user.organizationId ?? undefined)),
 
   createBlock: protectedProcedure
     .input(z.object({

@@ -1,11 +1,14 @@
 import { eq, and, inArray } from "drizzle-orm";
 import { teams, teamMembers, trainerMembers, users } from "../../drizzle/schema";
-import { getDb } from "./connection";
+import { getDb, tenantFilter } from "./connection";
 
-export async function getAllTeams() {
+export async function getAllTeams(organizationId?: number) {
   const database = await getDb();
   if (!database) return [];
-  return database.select().from(teams).where(eq(teams.isActive, true));
+  const conditions: any[] = [eq(teams.isActive, true)];
+  const tf = tenantFilter(teams, organizationId);
+  if (tf) conditions.push(tf);
+  return database.select().from(teams).where(and(...conditions));
 }
 
 export async function getTeamsWithMembers(teamIds?: number[]) {
@@ -93,10 +96,13 @@ export async function getTeamMemberIds(teamId: number) {
   return members.map(m => m.userId);
 }
 
-export async function getAllTrainerMembers() {
+export async function getAllTrainerMembers(organizationId?: number) {
   const database = await getDb();
   if (!database) return [];
-  return database.select().from(trainerMembers).where(eq(trainerMembers.isActive, true));
+  const conditions: any[] = [eq(trainerMembers.isActive, true)];
+  const tf = tenantFilter(trainerMembers, organizationId);
+  if (tf) conditions.push(tf);
+  return database.select().from(trainerMembers).where(and(...conditions));
 }
 
 export async function getTrainerMembers(trainerId: number) {

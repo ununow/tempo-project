@@ -1,6 +1,6 @@
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { InsertUser, users } from "../../drizzle/schema";
-import { getDb } from "./connection";
+import { getDb, tenantFilter } from "./connection";
 import { ENV } from '../_core/env';
 
 export async function upsertUser(user: InsertUser): Promise<void> {
@@ -81,16 +81,17 @@ export async function getUsersByOrg(organizationId: number) {
   return db.select().from(users).where(and(eq(users.organizationId, organizationId), eq(users.isActive, true)));
 }
 
-export async function getAllUsers() {
+export async function getAllUsers(organizationId?: number) {
   const database = await getDb();
   if (!database) return [];
+  const tf = tenantFilter(users, organizationId);
   return database.select({
     id: users.id,
     name: users.name,
     email: users.email,
     tempoRole: users.tempoRole,
     createdAt: users.createdAt,
-  }).from(users);
+  }).from(users).where(tf ?? undefined);
 }
 
 export async function setOnboardingDone(userId: number) {

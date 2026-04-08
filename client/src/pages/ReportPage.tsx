@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,9 +10,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import {
   ChevronLeft, ChevronRight, Save, Send, TrendingUp, TrendingDown,
-  Users, DollarSign, CheckSquare, AlertCircle, Calendar, FileText
+  Users, DollarSign, CheckSquare, AlertCircle, Calendar, FileText, Lightbulb
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CARRY_OVER_REASONS } from "@shared/const";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function toDateStr(d: Date) {
@@ -259,6 +260,7 @@ function WeeklyReportTab() {
   const [issues, setIssues] = useState<string[]>([""]);
   const [nextWeekPlan, setNextWeekPlan] = useState<string[]>([""]);
   const [memo, setMemo] = useState("");
+  const [reflection, setReflection] = useState({ whatWentWell: "", whatToImprove: "", lessonsLearned: "", nextWeekFocus: "" });
   const [numbers, setNumbers] = useState({
     totalMembers: 0, weeklyNewMembers: 0, weeklyCancelledMembers: 0,
     weeklyRevenue: 0, revenueTarget: 0,
@@ -267,6 +269,30 @@ function WeeklyReportTab() {
 
   const { start, end } = getWeekStartEnd(year, week);
   const { data: report, refetch } = trpc.report.weekly.useQuery({ year, week });
+  const { data: todos } = trpc.todo.list.useQuery({ periodType: "weekly", year, week });
+
+  const weekSummary = useMemo(() => {
+    if (!todos) return null;
+    const weekTodos = (todos as any[]).filter((t: any) => t.week === week && t.year === year);
+    const completed = weekTodos.filter((t: any) => t.status === "done");
+    const carried = weekTodos.filter((t: any) => t.isCarriedOver);
+    const reasonCounts: Record<string, number> = {};
+    carried.forEach((t: any) => { if (t.carryOverReason) reasonCounts[t.carryOverReason] = (reasonCounts[t.carryOverReason] || 0) + 1; });
+    const withTime = completed.filter((t: any) => t.estimatedMinutes && t.actualMinutes);
+    const avgAccuracy = withTime.length > 0
+      ? Math.round(withTime.reduce((acc: number, t: any) =>
+          acc + Math.min(t.estimatedMinutes, t.actualMinutes) / Math.max(t.estimatedMinutes, t.actualMinutes) * 100
+        , 0) / withTime.length)
+      : null;
+    return {
+      totalPlanned: weekTodos.length,
+      completed: completed.length,
+      completionRate: weekTodos.length > 0 ? Math.round(completed.length / weekTodos.length * 100) : 0,
+      carriedOver: carried.length,
+      topCarryReason: Object.entries(reasonCounts).sort((a, b) => b[1] - a[1])[0] as [string, number] | undefined,
+      predictionAccuracy: avgAccuracy,
+    };
+  }, [todos, week, year]);
 
   useMemo(() => {
     if (report) {
@@ -286,6 +312,8 @@ function WeeklyReportTab() {
       const nwp = (report as any).nextWeekPlan;
       setNextWeekPlan(Array.isArray(nwp) && nwp.length > 0 ? nwp.map((x: any) => String(x)) : [""]);
       setMemo((report as any).memo ?? "");
+      const ref = (report as any).reflection;
+      if (ref && typeof ref === "object") setReflection({ whatWentWell: ref.whatWentWell ?? "", whatToImprove: ref.whatToImprove ?? "", lessonsLearned: ref.lessonsLearned ?? "", nextWeekFocus: ref.nextWeekFocus ?? "" });
     }
   }, [report]);
 
@@ -305,6 +333,7 @@ function WeeklyReportTab() {
       issues: issues.filter(Boolean),
       nextWeekPlan: nextWeekPlan.filter(Boolean),
       memo,
+      reflection,
       status,
     });
   }
@@ -401,6 +430,43 @@ function WeeklyReportTab() {
         <CardHeader className="pb-2 pt-3 px-4"><CardTitle className="text-sm">기타 메모</CardTitle></CardHeader>
         <CardContent className="px-4 pb-3">
           <Textarea value={memo} onChange={e => setMemo(e.target.value)} rows={3} className="resize-none text-sm" placeholder="자유 메모..." />
+        </CardContent>
+      </Card>
+
+      {/* 주간 성찰 */}
+      <Card className="bg-card/50">
+        <CardHeader className="pb-2 pt-3 px-4">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Lightbulb className="h-4 w-4 text-yellow-400" />주간 성찰
+          </CardTitle>
+          <CardDescription className="text-xs">이번 주를 돌아보며 다음 주를 준비합니다</CardDescription>
+        </CardHeader>
+        <CardContent className="px-4 pb-3 space-y-3">
+          {weekSummary && weekSummary.totalPlanned > 0 && (
+            <div className="bg-muted/50 rounded-lg p-3 text-xs space-y-1 text-muted-foreground">
+              <p>이번 주 달성률: <strong className="text-foreground">{weekSummary.completionRate}%</strong> ({weekSummary.completed}/{weekSummary.totalPlanned})</p>
+              {weekSummary.carriedOver > 0 && (
+                <p>이월: {weekSummary.carriedOver}건 (주 사유: {weekSummary.topCarryReason ? CARRY_OVER_REASONS[weekSummary.topCarryReason[0] as keyof typeof CARRY_OVER_REASONS] ?? weekSummary.topCarryReason[0] : "없음"})</p>
+              )}
+              {weekSummary.predictionAccuracy !== null && <p>예측 정확도: {weekSummary.predictionAccuracy}%</p>}
+            </div>
+          )}
+          {[
+            { key: "whatWentWell" as const, label: "잘한 점", placeholder: "이번 주 잘한 점은?" },
+            { key: "whatToImprove" as const, label: "개선할 점", placeholder: "다음 주에 개선할 점은?" },
+            { key: "lessonsLearned" as const, label: "배운 점", placeholder: "이번 주 배운 것은?" },
+            { key: "nextWeekFocus" as const, label: "다음 주 집중 포인트", placeholder: "다음 주에 가장 집중할 것은?" },
+          ].map(({ key, label, placeholder }) => (
+            <div key={key}>
+              <Label className="text-xs text-muted-foreground">{label}</Label>
+              <Textarea
+                className="mt-1 h-20 resize-none text-sm"
+                placeholder={placeholder}
+                value={reflection[key]}
+                onChange={e => setReflection(r => ({ ...r, [key]: e.target.value }))}
+              />
+            </div>
+          ))}
         </CardContent>
       </Card>
     </div>

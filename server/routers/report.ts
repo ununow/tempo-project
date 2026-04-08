@@ -5,11 +5,11 @@ import * as db from "../db";
 export const reportRouter = router({
   daily: protectedProcedure
     .input(z.object({ reportDate: z.string() }))
-    .query(({ ctx, input }) => db.getDailyReport(ctx.user.id, input.reportDate)),
+    .query(({ ctx, input }) => db.getDailyReport(ctx.user.id, input.reportDate, ctx.user.organizationId ?? undefined)),
 
   dailyList: protectedProcedure
     .input(z.object({ startDate: z.string(), endDate: z.string() }))
-    .query(({ ctx, input }) => db.getDailyReports(ctx.user.id, input.startDate, input.endDate)),
+    .query(({ ctx, input }) => db.getDailyReports(ctx.user.id, input.startDate, input.endDate, ctx.user.organizationId ?? undefined)),
 
   saveDailyReport: protectedProcedure
     .input(z.object({
@@ -40,7 +40,7 @@ export const reportRouter = router({
 
   weekly: protectedProcedure
     .input(z.object({ year: z.number(), week: z.number() }))
-    .query(({ ctx, input }) => db.getWeeklyReport(ctx.user.id, input.year, input.week)),
+    .query(({ ctx, input }) => db.getWeeklyReport(ctx.user.id, input.year, input.week, ctx.user.organizationId ?? undefined)),
 
   saveWeeklyReport: protectedProcedure
     .input(z.object({
@@ -60,6 +60,12 @@ export const reportRouter = router({
       issues: z.array(z.any()).optional(),
       nextWeekPlan: z.array(z.any()).optional(),
       memo: z.string().optional(),
+      reflection: z.object({
+        whatWentWell: z.string().optional(),
+        whatToImprove: z.string().optional(),
+        lessonsLearned: z.string().optional(),
+        nextWeekFocus: z.string().optional(),
+      }).optional(),
       status: z.enum(["draft", "submitted", "approved"]).optional(),
     }))
     .mutation(({ ctx, input }) => {

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { adminCache, adminSessions } from "../../drizzle/schema";
 import { getDb } from "./connection";
 
@@ -21,23 +21,27 @@ export async function setAdminCache(cacheKey: string, data: unknown, ttlSeconds 
   });
 }
 
-export async function getAdminSession() {
+export async function getAdminSession(userId?: number) {
   const db = await getDb();
   if (!db) return null;
-  const result = await db.select().from(adminSessions).where(eq(adminSessions.isValid, true)).limit(1);
+  const conditions: any[] = [eq(adminSessions.isValid, true)];
+  if (userId) conditions.push(eq(adminSessions.userId, userId));
+  const result = await db.select().from(adminSessions).where(and(...conditions)).limit(1);
   if (result.length === 0) return null;
   const session = result[0];
   if (session.expiresAt && new Date() > new Date(session.expiresAt)) return null;
   return session;
 }
 
-export async function saveAdminSession(sessionToken: string, csrfToken: string, cookieJar?: string) {
+export async function saveAdminSession(userId: number, sessionToken: string, csrfToken: string, cookieJar?: string) {
   const db = await getDb();
   if (!db) return;
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  await db.update(adminSessions).set({ isValid: false }).where(eq(adminSessions.isValid, true));
+  // 해당 사용자의 기존 세션만 무효화 (다른 사용자 세션은 유지)
+  await db.update(adminSessions).set({ isValid: false })
+    .where(and(eq(adminSessions.isValid, true), eq(adminSessions.userId, userId)));
   await db.insert(adminSessions).values({
-    sessionToken, csrfToken, isValid: true, lastLoginAt: new Date(), expiresAt,
+    userId, sessionToken, csrfToken, isValid: true, lastLoginAt: new Date(), expiresAt,
     ...(cookieJar ? { cookieJar } : {}),
   });
 }

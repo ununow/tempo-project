@@ -6,7 +6,7 @@ import * as adminProxy from "../adminProxy";
 export const adminRouter = router({
   login: centerManagerProcedure
     .input(z.object({ id: z.string(), password: z.string() }))
-    .mutation(({ input }) => adminProxy.loginToAdmin(input.id, input.password)),
+    .mutation(({ input, ctx }) => adminProxy.loginToAdmin(input.id, input.password, ctx.user.id)),
   sessionStatus: protectedProcedure.query(() => adminProxy.checkAdminSession()),
   trainers: protectedProcedure.query(() => adminProxy.fetchTrainers()),
   notifications: protectedProcedure.query(() => adminProxy.fetchNotifications()),

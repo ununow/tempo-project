@@ -13,6 +13,7 @@
  *   - 쿠키는 DB(admin_sessions.cookieJar)에 JSON으로 영속 저장
  */
 import axios from "axios";
+import * as cheerio from "cheerio";
 import { getAdminCache, setAdminCache, getAdminSession, saveAdminSession } from "./db";
 
 const ADMIN_BASE = "https://admin.biz-pt.com";
@@ -36,21 +37,26 @@ export const ADMIN_LINKS = {
   memberTab:            (uid: string | number, tab: string) => `${ADMIN_BASE}/manage/members/${uid}?tab=${tab}`,
 };
 
-// ─── 쿠키 관리 ────────────────────────────────────────────────────────────────
-let _cookieJar: Record<string, string> = {};
-let _cookieLoaded = false;
+// ─── 쿠키 관리 (사용자별 분리) ────────────────────────────────────────────────
+const _cookieJars: Map<number | "anon", Record<string, string>> = new Map();
+const _cookieLoaded: Set<number | "anon"> = new Set();
 
-async function loadCookieJar() {
-  if (_cookieLoaded) return;
+async function loadCookieJar(userId?: number) {
+  const key: number | "anon" = userId ?? "anon";
+  if (_cookieLoaded.has(key)) return;
   try {
-    const session = await getAdminSession();
+    const session = await getAdminSession(userId);
     if (session?.cookieJar) {
-      try { _cookieJar = JSON.parse(session.cookieJar); } catch { _cookieJar = {}; }
+      try { _cookieJars.set(key, JSON.parse(session.cookieJar)); } catch { _cookieJars.set(key, {}); }
     }
-    _cookieLoaded = true;
+    _cookieLoaded.add(key);
   } catch {
-    _cookieLoaded = true;
+    _cookieLoaded.add(key);
   }
+}
+
+function getCookieJar(userId?: number): Record<string, string> {
+  return _cookieJars.get(userId ?? "anon") ?? {};
 }
 
 function buildCookieString(jar: Record<string, string>): string {
@@ -70,7 +76,7 @@ function parseCookies(setCookieHeaders: string[]): Record<string, string> {
 }
 
 // ─── 로그인 ───────────────────────────────────────────────────────────────────
-export async function loginToAdmin(id: string, password: string): Promise<{ success: boolean; sessionToken?: string; error?: string }> {
+export async function loginToAdmin(id: string, password: string, userId?: number): Promise<{ success: boolean; sessionToken?: string; error?: string }> {
   try {
     // Step 1: CSRF 토큰 + 초기 쿠키 획득
     const csrfRes = await axios.get(`${ADMIN_BASE}/api/auth/csrf`, {
@@ -114,10 +120,12 @@ export async function loginToAdmin(id: string, password: string): Promise<{ succ
       return { success: false, error: "세션 토큰 발급 실패. 아이디/비밀번호를 확인해 주세요." };
     }
 
-    // 쿠키 저장
-    _cookieJar = allCookies;
-    _cookieLoaded = true;
-    await saveAdminSession(sessionToken, csrfToken, JSON.stringify(allCookies));
+    // 쿠키 저장 (사용자별)
+    const key: number | "anon" = userId ?? "anon";
+    _cookieJars.set(key, allCookies);
+    _cookieLoaded.add(key);
+    const saveUserId = userId ?? 0;
+    await saveAdminSession(saveUserId, sessionToken, csrfToken, JSON.stringify(allCookies));
     return { success: true, sessionToken };
   } catch (error: any) {
     console.error("[AdminProxy] Login error:", error.message);
@@ -126,10 +134,11 @@ export async function loginToAdmin(id: string, password: string): Promise<{ succ
 }
 
 // ─── 인증 헤더 빌더 ───────────────────────────────────────────────────────────
-async function getAuthHeaders(): Promise<Record<string, string> | null> {
-  await loadCookieJar();
-  if (Object.keys(_cookieJar).length === 0) {
-    const session = await getAdminSession();
+async function getAuthHeaders(userId?: number): Promise<Record<string, string> | null> {
+  await loadCookieJar(userId);
+  const jar = getCookieJar(userId);
+  if (Object.keys(jar).length === 0) {
+    const session = await getAdminSession(userId);
     if (!session?.sessionToken) return null;
     return {
       "Cookie": `__Secure-next-auth.session-token=${session.sessionToken}`,
@@ -138,20 +147,20 @@ async function getAuthHeaders(): Promise<Record<string, string> | null> {
     };
   }
   return {
-    "Cookie": buildCookieString(_cookieJar),
+    "Cookie": buildCookieString(jar),
     "Accept": "application/json",
     "User-Agent": "Mozilla/5.0 (compatible; Tempo/1.0)",
   };
 }
 
 // ─── 공통 API 호출 ────────────────────────────────────────────────────────────
-async function adminGet<T>(path: string, cacheKey?: string, ttl = CACHE_TTL): Promise<T | null> {
+async function adminGet<T>(path: string, cacheKey?: string, ttl = CACHE_TTL, userId?: number): Promise<T | null> {
   if (cacheKey) {
     const cached = await getAdminCache(cacheKey);
     if (cached) return cached as T;
   }
 
-  const headers = await getAuthHeaders();
+  const headers = await getAuthHeaders(userId);
   if (!headers) return null;
 
   try {
@@ -166,8 +175,8 @@ async function adminGet<T>(path: string, cacheKey?: string, ttl = CACHE_TTL): Pr
 }
 
 // HTML 페이지 fetch (RSC 우회용)
-async function adminFetchHtml(path: string): Promise<string | null> {
-  const headers = await getAuthHeaders();
+async function adminFetchHtml(path: string, userId?: number): Promise<string | null> {
+  const headers = await getAuthHeaders(userId);
   if (!headers) return null;
   try {
     const res = await axios.get(`${ADMIN_BASE}${path}`, {
@@ -206,16 +215,21 @@ export async function fetchEmergencyNotice(): Promise<any | null> {
 }
 
 // ─── 세션 상태 확인 ───────────────────────────────────────────────────────────
-export async function checkAdminSession(): Promise<{ valid: boolean; user?: any }> {
-  const headers = await getAuthHeaders();
-  if (!headers) return { valid: false };
-  try {
-    const res = await axios.get(`${ADMIN_BASE}/api/auth/session`, { headers, timeout: 5000 });
-    const user = res.data?.user;
-    return { valid: !!user, user };
-  } catch {
-    return { valid: false };
-  }
+export async function checkAdminSession(): Promise<{
+  connected: boolean;
+  expired: boolean;
+  lastLoginAt?: string;
+  expiresAt?: string;
+}> {
+  const session = await getAdminSession();
+  if (!session) return { connected: false, expired: false };
+  const isExpired = session.expiresAt ? new Date() > new Date(session.expiresAt) : false;
+  return {
+    connected: !isExpired,
+    expired: isExpired,
+    lastLoginAt: session.lastLoginAt?.toISOString(),
+    expiresAt: session.expiresAt?.toISOString(),
+  };
 }
 
 // ─── 회원 상세 정보 조회 (UID 기반) ──────────────────────────────────────────
@@ -243,136 +257,168 @@ export interface MemberDetail {
   };
 }
 
+const FALLBACK_MEMBER = (uid: string, message: string): MemberDetail & { _parseError: true; _message: string } => ({
+  uid, name: uid, adminUrl: `${ADMIN_BASE}/manage/members/${uid}`,
+  tabs: TABS_FOR(uid), ptCancelRequested: false,
+  _parseError: true, _message: message,
+});
+
 export async function fetchMemberByUid(uid: string): Promise<MemberDetail | null> {
-  const cacheKey = `member:${uid}`;
-  const cached = await getAdminCache(cacheKey);
-  if (cached) return cached as MemberDetail;
+  try {
+    const cacheKey = `member:${uid}`;
+    const cached = await getAdminCache(cacheKey);
+    if (cached) return cached as MemberDetail;
 
-  const html = await adminFetchHtml(`/manage/members/${uid}`);
-  if (!html) return null;
+    const html = await adminFetchHtml(`/manage/members/${uid}`);
+    if (!html) return FALLBACK_MEMBER(uid, "어드민 데이터를 가져올 수 없습니다") as any;
 
-  const member = parseMemberHtml(html, uid);
-  if (member) await setAdminCache(cacheKey, member, MEMBER_CACHE_TTL);
-  return member;
+    const member = parseMemberHtml(html, uid);
+    if (member) await setAdminCache(cacheKey, member, MEMBER_CACHE_TTL);
+    return member;
+  } catch (error: any) {
+    console.error(`[AdminProxy] fetchMemberByUid(${uid}) failed:`, error.message);
+    return FALLBACK_MEMBER(uid, error.message) as any;
+  }
 }
 
 export async function fetchMemberPtSchedule(uid: string): Promise<any> {
-  const cacheKey = `member_pt:${uid}`;
-  const cached = await getAdminCache(cacheKey);
-  if (cached) return cached;
+  try {
+    const cacheKey = `member_pt:${uid}`;
+    const cached = await getAdminCache(cacheKey);
+    if (cached) return cached;
 
-  const html = await adminFetchHtml(`/manage/members/${uid}?tab=PtSchedule`);
-  if (!html) return null;
+    const html = await adminFetchHtml(`/manage/members/${uid}?tab=PtSchedule`);
+    if (!html) return { schedules: [], _parseError: true };
 
-  const data = parsePtScheduleHtml(html);
-  if (data) await setAdminCache(cacheKey, data, MEMBER_CACHE_TTL);
-  return data;
+    const data = parsePtScheduleHtml(html);
+    if (data) await setAdminCache(cacheKey, data, MEMBER_CACHE_TTL);
+    return data;
+  } catch (error: any) {
+    console.error(`[AdminProxy] fetchMemberPtSchedule(${uid}) failed:`, error.message);
+    return { schedules: [], _parseError: true, _message: error.message };
+  }
 }
 
 export async function fetchMemberLectureProgress(uid: string): Promise<any> {
-  const cacheKey = `member_lecture:${uid}`;
-  const cached = await getAdminCache(cacheKey);
-  if (cached) return cached;
+  try {
+    const cacheKey = `member_lecture:${uid}`;
+    const cached = await getAdminCache(cacheKey);
+    if (cached) return cached;
 
-  const html = await adminFetchHtml(`/manage/members/${uid}?tab=lectureProgress`);
-  if (!html) return null;
+    const html = await adminFetchHtml(`/manage/members/${uid}?tab=lectureProgress`);
+    if (!html) return { completed: 0, total: 0, completionRate: 0, _parseError: true };
 
-  const data = parseLectureProgressHtml(html);
-  if (data) await setAdminCache(cacheKey, data, MEMBER_CACHE_TTL);
-  return data;
+    const data = parseLectureProgressHtml(html);
+    if (data) await setAdminCache(cacheKey, data, MEMBER_CACHE_TTL);
+    return data;
+  } catch (error: any) {
+    console.error(`[AdminProxy] fetchMemberLectureProgress(${uid}) failed:`, error.message);
+    return { completed: 0, total: 0, completionRate: 0, _parseError: true, _message: error.message };
+  }
 }
 
 export async function fetchMemberThumbnailMaster(uid: string): Promise<any> {
-  const cacheKey = `member_thumb:${uid}`;
-  const cached = await getAdminCache(cacheKey);
-  if (cached) return cached;
+  try {
+    const cacheKey = `member_thumb:${uid}`;
+    const cached = await getAdminCache(cacheKey);
+    if (cached) return cached;
 
-  const html = await adminFetchHtml(`/manage/members/${uid}?tab=thumbnailMaster`);
-  if (!html) return null;
+    const html = await adminFetchHtml(`/manage/members/${uid}?tab=thumbnailMaster`);
+    if (!html) return { thumbnailMasterDone: false, wonMasterDone: false, _parseError: true };
 
-  const data = parseThumbnailMasterHtml(html);
-  if (data) await setAdminCache(cacheKey, data, MEMBER_CACHE_TTL);
-  return data;
+    const data = parseThumbnailMasterHtml(html);
+    if (data) await setAdminCache(cacheKey, data, MEMBER_CACHE_TTL);
+    return data;
+  } catch (error: any) {
+    console.error(`[AdminProxy] fetchMemberThumbnailMaster(${uid}) failed:`, error.message);
+    return { thumbnailMasterDone: false, wonMasterDone: false, _parseError: true, _message: error.message };
+  }
 }
 
-// ─── HTML 파싱 헬퍼 ────────────────────────────────────────────────────────────
-function extractText(html: string, pattern: RegExp): string | undefined {
-  return html.match(pattern)?.[1]?.replace(/<[^>]+>/g, "").trim();
-}
+// ─── HTML 파싱 헬퍼 (cheerio 기반) ───────────────────────────────────────────
+const TABS_FOR = (uid: string) => ({
+  ptSchedule:       `${ADMIN_BASE}/manage/members/${uid}?tab=PtSchedule`,
+  lectureProgress:  `${ADMIN_BASE}/manage/members/${uid}?tab=lectureProgress`,
+  thumbnailMaster:  `${ADMIN_BASE}/manage/members/${uid}?tab=thumbnailMaster`,
+  prodDiary:        `${ADMIN_BASE}/manage/members/${uid}?tab=prodDiary`,
+  payment:          `${ADMIN_BASE}/manage/members/${uid}?tab=payment`,
+  contents:         `${ADMIN_BASE}/manage/members/${uid}?tab=contents`,
+});
 
 function parseMemberHtml(html: string, uid: string): MemberDetail {
-  // Next.js RSC 페이로드 또는 HTML에서 주요 필드 추출
-  const name =
-    extractText(html, /이름[^>]*>\s*<[^>]+>([^<]+)</) ??
-    extractText(html, /"name"\s*:\s*"([^"]+)"/) ??
-    uid;
+  const $ = cheerio.load(html);
 
-  const phone =
-    extractText(html, /휴대전화[^>]*>\s*<[^>]+>([^<]+)</) ??
-    extractText(html, /"phone"\s*:\s*"([^"]+)"/);
+  // __NEXT_DATA__ JSON이 있으면 우선 사용
+  const nextData = $("script#__NEXT_DATA__").text();
+  if (nextData) {
+    try {
+      const json = JSON.parse(nextData);
+      const m = json?.props?.pageProps?.member;
+      if (m) {
+        return {
+          uid, name: m.name ?? uid, phone: m.phone, ptType: m.ptType,
+          trainerName: m.trainerName, centerName: m.centerName,
+          ptCancelRequested: m.ptCancelRequested ?? false,
+          instagramUrl: m.instagramUrl,
+          adminUrl: `${ADMIN_BASE}/manage/members/${uid}`,
+          tabs: TABS_FOR(uid),
+        };
+      }
+    } catch { /* fallback to DOM */ }
+  }
 
-  const ptType =
-    html.match(/(PT골드\d*\.?\d*|PT실버\d*\.?\d*|핵심 개념|수료후강의반|강의반|그레이|버건디|블루|커맨드)/)?.[1];
-
-  const trainerName = extractText(html, /담당 트레이너[^>]*>\s*<[^>]+>([^<]+)</);
-  const centerName = extractText(html, /센터장[^>]*>\s*<[^>]+>([^<]+)</);
-  const ptCancelRequested = html.includes("PT 탈퇴 신청");
-
-  const instagramUrl = extractText(html, /instagram\.com[^"']*["']?\s*[^>]*>([^<]+)</);
+  // DOM 파싱 fallback
+  const name = $('dt:contains("이름")').next("dd").text().trim() || uid;
+  const phone = $('dt:contains("휴대전화")').next("dd").text().trim() || undefined;
+  const ptType = $('[class*="badge"], [class*="label"]')
+    .filter((_, el) => /PT골드|PT실버|핵심 개념|수료후강의반|강의반|그레이|버건디|블루|커맨드/.test($(el).text()))
+    .first().text().trim() || undefined;
+  const trainerName = $('dt:contains("담당 트레이너")').next("dd").text().trim() || undefined;
+  const centerName = $('dt:contains("센터장")').next("dd").text().trim() || undefined;
+  const ptCancelRequested = $("body").text().includes("PT 탈퇴 신청");
 
   return {
-    uid,
-    name,
-    phone,
-    ptType,
-    trainerName,
-    centerName,
-    ptCancelRequested,
-    instagramUrl,
+    uid, name, phone, ptType, trainerName, centerName, ptCancelRequested,
+    instagramUrl: undefined,
     adminUrl: `${ADMIN_BASE}/manage/members/${uid}`,
-    tabs: {
-      ptSchedule:       `${ADMIN_BASE}/manage/members/${uid}?tab=PtSchedule`,
-      lectureProgress:  `${ADMIN_BASE}/manage/members/${uid}?tab=lectureProgress`,
-      thumbnailMaster:  `${ADMIN_BASE}/manage/members/${uid}?tab=thumbnailMaster`,
-      prodDiary:        `${ADMIN_BASE}/manage/members/${uid}?tab=prodDiary`,
-      payment:          `${ADMIN_BASE}/manage/members/${uid}?tab=payment`,
-      contents:         `${ADMIN_BASE}/manage/members/${uid}?tab=contents`,
-    },
+    tabs: TABS_FOR(uid),
   };
 }
 
 function parsePtScheduleHtml(html: string): any {
+  const $ = cheerio.load(html);
   const schedules: Array<{ date: string; time: string; type: string; status: string }> = [];
-  const rows = html.match(/<tr[^>]*>([\s\S]*?)<\/tr>/g) ?? [];
-  for (const row of rows.slice(1, 30)) {
-    const cells = (row.match(/<td[^>]*>([\s\S]*?)<\/td>/g) ?? []).map(c =>
-      c.replace(/<[^>]+>/g, "").trim()
-    );
+  $("table tr").slice(1, 30).each((_, row) => {
+    const cells = $(row).find("td").map((_, td) => $(td).text().trim()).get();
     if (cells.length >= 3 && cells[0]) {
       schedules.push({ date: cells[0], time: cells[1] ?? "", type: cells[2] ?? "", status: cells[3] ?? "" });
     }
-  }
+  });
   return { schedules };
 }
 
 function parseLectureProgressHtml(html: string): any {
-  const completedMatches = html.match(/완료/g) ?? [];
-  const totalMatches = html.match(/강의/g) ?? [];
-  const completed = completedMatches.length;
-  const total = Math.max(totalMatches.length, completed);
-  return {
-    completed,
-    total,
-    completionRate: total > 0 ? Math.round((completed / total) * 100) : 0,
-    rawHtml: html.length > 500 ? "parsed" : "empty",
-  };
+  const $ = cheerio.load(html);
+  let completed = 0, total = 0;
+  $("table tr, [class*='lecture'], [class*='progress']").each((_, el) => {
+    const text = $(el).text();
+    if (text.includes("강의") || text.includes("레슨")) {
+      total++;
+      if (text.includes("완료")) completed++;
+    }
+  });
+  if (total === 0) {
+    completed = ($("body").text().match(/완료/g) ?? []).length;
+    total = Math.max(($("body").text().match(/강의/g) ?? []).length, completed);
+  }
+  return { completed, total, completionRate: total > 0 ? Math.round((completed / total) * 100) : 0 };
 }
 
 function parseThumbnailMasterHtml(html: string): any {
-  const thumbDone = html.includes("썸끝") && (html.includes("완료") || html.includes("달성"));
-  const wonDone = html.includes("원끝") && (html.includes("완료") || html.includes("달성"));
+  const $ = cheerio.load(html);
+  const text = $("body").text();
   return {
-    thumbnailMasterDone: thumbDone,
-    wonMasterDone: wonDone,
+    thumbnailMasterDone: text.includes("썸끝") && (text.includes("완료") || text.includes("달성")),
+    wonMasterDone: text.includes("원끝") && (text.includes("완료") || text.includes("달성")),
   };
 }

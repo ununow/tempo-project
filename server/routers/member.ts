@@ -6,7 +6,7 @@ export const trainerMemberRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     const role = ctx.user.tempoRole ?? "trainer";
     if (["owner", "center_manager"].includes(role)) {
-      return db.getAllTrainerMembers();
+      return db.getAllTrainerMembers((ctx.user as any).organizationId ?? undefined);
     } else if (role === "sub_manager") {
       const teams = await db.getTeamsByManager(ctx.user.id);
       const teamIds = teams.map(t => t.id);

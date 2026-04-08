@@ -240,6 +240,7 @@ export const weeklyReports = mysqlTable("weekly_reports", {
   issues: json("issues"),
   nextWeekPlan: json("nextWeekPlan"),
   memo: text("memo"),
+  reflection: json("reflection"), // {whatWentWell, whatToImprove, lessonsLearned, nextWeekFocus}
   status: mysqlEnum("status", ["draft", "submitted", "approved"]).default("draft").notNull(),
   submittedAt: timestamp("submittedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -293,6 +294,7 @@ export const adminCache = mysqlTable("admin_cache", {
 // ─── Admin Sessions (어드민 로그인 세션) ──────────────────────────────────────
 export const adminSessions = mysqlTable("admin_sessions", {
   id: int("id").autoincrement().primaryKey(),
+  userId: int("userId"),                // 어떤 사용자의 세션인지
   sessionToken: text("sessionToken"),   // next-auth.session-token 쿠키값
   csrfToken: text("csrfToken"),
   cookieJar: text("cookieJar"),         // 전체 쿠키 문자열 (JSON serialized)

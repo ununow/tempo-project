@@ -57,6 +57,7 @@ export default function Dashboard() {
     undefined, { retry: false }
   );
   const { data: adminNotifications } = trpc.admin.notifications.useQuery(undefined, { retry: false });
+  const { data: sessionStatus } = trpc.admin.sessionStatus.useQuery(undefined, { retry: false });
   const { data: todos } = trpc.todo.list.useQuery({ periodType: "monthly" }, { retry: false });
 
   const todoStats = todos ? {
@@ -94,6 +95,16 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* 어드민 세션 만료 알림 */}
+      {(sessionStatus as any)?.expired && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+          <span className="text-sm text-amber-500">어드민 세션이 만료되었습니다.</span>
+          <Link href="/admin-settings">
+            <Button size="sm" variant="outline" className="ml-auto text-xs">재연동</Button>
+          </Link>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

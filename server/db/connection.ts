@@ -1,4 +1,5 @@
 import { drizzle } from "drizzle-orm/mysql2";
+import { eq, SQL } from "drizzle-orm";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -12,4 +13,10 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+/** 모든 조회 쿼리에서 사용할 테넌트 필터. organizationId가 없으면 undefined 반환 */
+export function tenantFilter(table: any, organizationId: number | undefined): SQL | undefined {
+  if (!organizationId) return undefined;
+  return eq(table.organizationId, organizationId);
 }
